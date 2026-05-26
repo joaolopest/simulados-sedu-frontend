@@ -1,13 +1,3 @@
-"""Endpoint de apoio à DEMONSTRAÇÃO.
-
-Prepara (de forma idempotente) a estrutura mínima necessária para demonstrar
-o ciclo de simulado: uma escola, uma turma de 9º ano, um gestor e um aluno.
-Retorna os IDs para a página de demonstração usar.
-
-Obs.: é um utilitário de demo/bootstrap — em produção a estrutura viria do
-cadastro real de escolas/turmas/usuários (Épico 2).
-"""
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,7 +9,7 @@ from app.models import Aluno, Escola, Serie, Turma, Usuario
 router = APIRouter(prefix="/demo", tags=["demo"])
 
 
-@router.post("/preparar")
+@router.post("/preparar", summary="Preparar dados de demonstração (escola, turma, gestor, aluno)")
 def preparar_estrutura(sessao: Session = Depends(get_session)) -> dict:
     serie = sessao.scalar(select(Serie).where(Serie.nome == "9º ano")) or sessao.scalar(
         select(Serie).order_by(Serie.id)

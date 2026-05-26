@@ -1,16 +1,3 @@
-"""Demonstra o CAMINHO DA GERAÇÃO DE PROVA usando as funções puras.
-
-Não depende de FastAPI. Mostra:
-    - quantas questões existem por nível (repositório)
-    - uma prova gerada com distribuição 30/50/20 (serviço)
-    - alternativas embaralhadas + gabarito
-
-Pré-requisitos:
-    python scripts/init_db.py
-    python scripts/seed_etiquetas.py
-    python scripts/seed_questoes_demo.py
-"""
-
 import sys
 from pathlib import Path
 
@@ -41,7 +28,7 @@ def main() -> None:
             materia=MATERIA,
             distribuicao={"Fácil": 0.3, "Médio": 0.5, "Difícil": 0.2},
             quantidade=10,
-            seed=42,  # fixo para a demonstracao ser reproduzivel
+            seed=42,
         )
 
         print(f"\n  Total gerado: {prova.total}")

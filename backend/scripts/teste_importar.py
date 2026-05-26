@@ -1,13 +1,3 @@
-"""Testa a importação de questões a partir de um arquivo JSON.
-
-Usa o exemplo scripts/exemplo_importacao.json, que de propósito tem:
-    1 questão válida, 1 com conteúdo inexistente e 1 sem alternativa correta
-para demonstrar o relatório de erros por linha.
-
-Pré-requisitos: init_db + seed_etiquetas + seed_questoes_demo (para existir
-a matéria 'Matemática' e o conteúdo 'Funções').
-"""
-
 import json
 import sys
 from pathlib import Path

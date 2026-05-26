@@ -1,9 +1,3 @@
-"""Endpoint de GERAÇÃO DE PROVA.
-
-Corresponde ao POST /simulados/:id/gerar do backlog (versão clássica/fallback).
-Recebe os parâmetros do gestor e devolve a prova montada e embaralhada.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -16,7 +10,8 @@ router = APIRouter(prefix="/provas", tags=["provas"])
 
 class GerarProvaRequest(BaseModel):
     serie: str = Field(..., examples=["9º ano"])
-    materia: str = Field(..., examples=["Matemática"])
+    materia: str | None = Field(None, examples=["Matemática"])
+    materias: list[str] | None = Field(None, examples=[["Matemática", "Português"]])
     conteudos: list[str] | None = Field(None, examples=[["Funções", "Equação do 2º grau"]])
     distribuicao: dict[str, float] | None = Field(
         None,
@@ -28,17 +23,17 @@ class GerarProvaRequest(BaseModel):
     seed: int | None = Field(None, description="Fixa o sorteio para reproduzir o resultado")
 
 
-@router.post("/gerar")
+@router.post("/gerar", summary="Gerar prova avulsa (sorteio balanceado + embaralhamento)")
 def gerar_prova(
     req: GerarProvaRequest,
     sessao: Session = Depends(get_session),
 ) -> dict:
-    """Gera uma prova balanceada a partir do banco de questões."""
     try:
         prova = prova_service.gerar_prova(
             sessao,
             serie=req.serie,
             materia=req.materia,
+            materias=req.materias,
             conteudos=req.conteudos,
             distribuicao=req.distribuicao,
             quantidade=req.quantidade,
@@ -49,8 +44,18 @@ def gerar_prova(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return {
+        "parametros": {
+            "serie": req.serie,
+            "materia": req.materia,
+            "materias": req.materias,
+            "conteudos": req.conteudos,
+            "distribuicao": req.distribuicao,
+            "quantidade": req.quantidade,
+            "adaptacoes": req.adaptacoes,
+            "seed": req.seed,
+        },
         "serie": prova.serie,
-        "materia": prova.materia,
+        "materias": prova.materias,
         "total": prova.total,
         "distribuicao_real": prova.distribuicao_real,
         "questoes": [
@@ -58,6 +63,7 @@ def gerar_prova(
                 "ordem": q.ordem,
                 "questao_id": q.questao_id,
                 "enunciado": q.enunciado,
+                "materia": q.materia,
                 "conteudo": q.conteudo,
                 "nivel": q.nivel,
                 "alternativas": [

@@ -1,97 +1,61 @@
-"""Endpoints de autenticação.
-
-    POST /auth/login    autentica por email + senha
-    POST /auth/logout   (no-op no mock — token sem estado)
-    GET  /auth/me       devolve usuário autenticado pelo header
-"""
-
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
 from app.models import Usuario
-from app.services.seguranca import gerar_token_sessao, verificar_senha
+from app.services import auth_service
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["autenticacao"])
+
+seguranca = HTTPBearer(auto_error=True, description="Cole aqui o token recebido no login")
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., min_length=5)
-    senha: str = Field(..., min_length=6)
+    email: str = Field(..., description="E-mail do usuário", examples=["admin@sedu.se.gov.br"])
+    senha: str = Field(..., description="Senha do usuário", examples=["sedu123"])
 
 
-class UsuarioOut(BaseModel):
-    id: int
-    nome: str
-    email: str
-    perfil: str
-    ativo: bool
-
-    @classmethod
-    def from_modelo(cls, u: Usuario) -> "UsuarioOut":
-        return cls(
-            id=u.id,
-            nome=u.nome,
-            email=u.email,
-            perfil=u.perfil.value,
-            ativo=u.ativo,
-        )
-
-
-class LoginResponse(BaseModel):
-    usuario: UsuarioOut
-    token: str
-
-
-@router.post("/login", response_model=LoginResponse)
-def login(req: LoginRequest, sessao: Session = Depends(get_session)) -> LoginResponse:
-    usuario = (
-        sessao.query(Usuario).filter(Usuario.email == req.email.lower()).one_or_none()
-    )
-    if not usuario or not usuario.ativo:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "codigo": "CREDENCIAIS_INVALIDAS",
-                "mensagem": "Email ou senha incorretos.",
-            },
-        )
-    if not verificar_senha(req.senha, usuario.senha_hash):
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "codigo": "CREDENCIAIS_INVALIDAS",
-                "mensagem": "Email ou senha incorretos.",
-            },
-        )
-
-    token = gerar_token_sessao(usuario.id)
-    return LoginResponse(usuario=UsuarioOut.from_modelo(usuario), token=token)
-
-
-@router.post("/logout")
-def logout() -> dict:
-    return {"ok": True}
-
-
-@router.get("/me", response_model=UsuarioOut)
-def me(
-    authorization: str | None = Header(None),
+def obter_usuario_atual(
+    credenciais: HTTPAuthorizationCredentials = Depends(seguranca),
     sessao: Session = Depends(get_session),
-) -> UsuarioOut:
-    """Devolve o usuário do token. Formato simplificado: 'Bearer mock.<id>.<rand>'."""
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Token ausente.")
-    token = authorization.split(" ", 1)[1]
-    partes = token.split(".")
-    if len(partes) < 3 or partes[0] != "mock":
-        raise HTTPException(status_code=401, detail="Token inválido.")
+) -> Usuario:
     try:
-        usuario_id = int(partes[1])
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail="Token inválido.") from exc
-    usuario = sessao.get(Usuario, usuario_id)
-    if not usuario or not usuario.ativo:
-        raise HTTPException(status_code=401, detail="Sessão expirada.")
-    return UsuarioOut.from_modelo(usuario)
+        dados = auth_service.decodificar_token(credenciais.credentials)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado") from exc
+    usuario = sessao.get(Usuario, int(dados.get("sub", 0)))
+    if usuario is None or not usuario.ativo:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado ou inativo")
+    return usuario
+
+
+@router.post("/login", summary="Fazer login e receber o token de acesso")
+def login(req: LoginRequest, sessao: Session = Depends(get_session)) -> dict:
+    usuario = sessao.scalar(select(Usuario).where(Usuario.email == req.email))
+    if usuario is None or not auth_service.verificar_senha(req.senha, usuario.senha_hash):
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    token = auth_service.criar_token(usuario.id, usuario.perfil.value)
+    return {
+        "token": token,
+        "tipo": "Bearer",
+        "expira_em_horas": auth_service.HORAS_VALIDADE,
+        "usuario": {
+            "id": usuario.id,
+            "nome": usuario.nome,
+            "email": usuario.email,
+            "perfil": usuario.perfil.value,
+        },
+    }
+
+
+@router.get("/me", summary="Ver os dados do usuário autenticado (rota protegida)")
+def usuario_logado(usuario: Usuario = Depends(obter_usuario_atual)) -> dict:
+    return {
+        "id": usuario.id,
+        "nome": usuario.nome,
+        "email": usuario.email,
+        "perfil": usuario.perfil.value,
+    }

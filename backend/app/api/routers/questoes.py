@@ -1,8 +1,3 @@
-"""Endpoints de QUESTÕES: listar e filtrar o banco de questões.
-
-Corresponde ao GET /questoes do backlog. A busca é delegada ao repositório.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -51,7 +46,7 @@ def _serializar(questao: Questao) -> dict:
     }
 
 
-@router.get("")
+@router.get("", summary="Listar e filtrar questões do banco")
 def listar_questoes(
     serie: str | None = Query(None, description="Ex.: '9º ano'"),
     materia: str | None = Query(None, description="Ex.: 'Matemática'"),
@@ -60,7 +55,6 @@ def listar_questoes(
     limite: int = Query(20, ge=1, le=200),
     sessao: Session = Depends(get_session),
 ) -> list[dict]:
-    """Lista questões aplicando filtros opcionais por etiqueta."""
     questoes = questao_repository.filtrar_questoes(
         sessao,
         serie=serie,
@@ -72,11 +66,10 @@ def listar_questoes(
     return [_serializar(q) for q in questoes]
 
 
-@router.post("")
+@router.post("", summary="Cadastrar uma questão")
 def cadastrar_questao(
     req: CadastrarQuestaoRequest, sessao: Session = Depends(get_session)
 ) -> dict:
-    """Cadastra uma única questão (formulário). Cria matéria/conteúdo se faltar."""
     try:
         questao = questao_service.cadastrar_questao(
             sessao,

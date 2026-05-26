@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import Base, engine  # noqa: E402
-from app import models  # noqa: E402, F401  importa para registrar as tabelas no metadata
+from app import models  # noqa: E402, F401
 
 
 def main() -> None:

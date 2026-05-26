@@ -1,17 +1,3 @@
-"""Serviço de IMPORTAÇÃO de questões a partir de JSON (Épico 3 — US T-01).
-
-Recebe o JSON da SEDUC (cada questão = cabeçalho + etiquetas + alternativas),
-valida questão a questão e devolve um RELATÓRIO: quantas entraram, quantas
-foram rejeitadas e o motivo de cada rejeição (por linha/índice).
-
-Regras (conforme backlog v4):
-    - Questão sem metadado obrigatório é rejeitada (não derruba a importação toda).
-    - Etiqueta (série/matéria/conteúdo/nível) inexistente => questão rejeitada,
-      com o motivo apontando qual etiqueta não bateu.
-    - Precisa ter ao menos 2 alternativas e exatamente uma correta.
-    - As questões válidas são persistidas; as inválidas entram no array de erros.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -42,10 +28,6 @@ def _buscar(sessao: Session, modelo, nome: str):
 
 
 def _validar_e_construir(sessao: Session, q: dict) -> Questao:
-    """Valida um dict de questão e devolve um objeto Questao (transitório).
-
-    Levanta ValueError com mensagem clara se algo estiver errado.
-    """
     if not isinstance(q, dict):
         raise ValueError("item não é um objeto JSON")
 
@@ -122,7 +104,6 @@ def _validar_e_construir(sessao: Session, q: dict) -> Questao:
 
 
 def importar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
-    """Importa um lote de questões. Persiste só as válidas; reporta as inválidas."""
     questoes = payload.get("questoes")
     if not isinstance(questoes, list):
         raise ValueError(
@@ -132,9 +113,6 @@ def importar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
     relatorio = RelatorioImportacao()
     validas: list[Questao] = []
 
-    # no_autoflush: as questões válidas só vão para a sessão no add_all final.
-    # Sem isto, as consultas de etiqueta disparariam autoflush prematuro dos
-    # objetos ainda transitórios (gera SAWarning).
     with sessao.no_autoflush:
         for indice, q in enumerate(questoes, start=1):
             try:

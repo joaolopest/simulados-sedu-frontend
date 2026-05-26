@@ -1,9 +1,3 @@
-"""Endpoint de RESPOSTA do aluno (autosave) — POST /respostas (Épico 5).
-
-Salva a resposta a cada clique. Se o aluno trocar de alternativa, a resposta
-é atualizada (upsert), garantindo que a queda de conexão não perca progresso.
-"""
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -21,7 +15,7 @@ class ResponderRequest(BaseModel):
     alternativa_id: int
 
 
-@router.post("")
+@router.post("", summary="Salvar resposta do aluno (autosave)")
 def responder(req: ResponderRequest, sessao: Session = Depends(get_session)) -> dict:
     try:
         resposta = simulado_service.registrar_resposta(

@@ -1,11 +1,3 @@
-"""Serviço de cadastro individual de questão (usado pelo formulário/demo).
-
-Diferente da importação em lote (importacao_service, que é estrita por ser
-alimentada por JSON externo), o cadastro manual é feito por um Admin de forma
-deliberada — então criamos matéria/conteúdo na hora se ainda não existirem.
-Série e Nível continuam restritos aos valores de etiqueta já cadastrados.
-"""
-
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -38,7 +30,6 @@ def cadastrar_questao(
     if nivel_obj is None:
         raise ValueError(f"nível inexistente: '{nivel}'")
 
-    # Matéria e conteúdo são criados na hora se não existirem (cadastro manual)
     materia_obj = sessao.scalar(select(Materia).where(Materia.nome == materia))
     if materia_obj is None:
         materia_obj = Materia(nome=materia.strip())

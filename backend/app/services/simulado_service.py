@@ -1,25 +1,13 @@
-"""Serviço do CICLO DE VIDA do simulado (Épicos 4-6).
-
-Fluxo de estados (StatusSimulado):
-    RASCUNHO --gerar--> GERADO --liberar--> LIBERADO --finalizar--> FINALIZADO
-
-Funções:
-    criar_simulado        cria o simulado com os parâmetros (status RASCUNHO)
-    gerar_e_persistir     seleciona questões (prova_service) e congela a ordem
-                          das alternativas em simulado_questoes (status GERADO)
-    liberar               abre o simulado para os alunos (status LIBERADO)
-    montar_questoes       monta as questões na ordem salva (com/sem gabarito)
-    registrar_resposta    autosave da resposta do aluno (calcula se acertou)
-    finalizar_e_corrigir  encerra e calcula a nota de cada aluno (FINALIZADO)
-"""
-
 from __future__ import annotations
+
+import random
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.enums import StatusSimulado
 from app.models import Alternativa, Resposta, Simulado, SimuladoQuestao
+from app.repositories import questao_repository
 from app.services import prova_service
 
 LETRAS = "ABCDE"
@@ -33,7 +21,6 @@ def criar_simulado(
     titulo: str,
     parametros: dict,
 ) -> Simulado:
-    """Cria um simulado em RASCUNHO guardando os parâmetros de geração."""
     simulado = Simulado(
         gestor_id=gestor_id,
         turma_id=turma_id,
@@ -50,11 +37,6 @@ def criar_simulado(
 def gerar_e_persistir(
     sessao: Session, *, simulado_id: int, seed: int | None = None
 ) -> Simulado:
-    """Gera a seleção de questões e persiste em simulado_questoes.
-
-    Reusa o prova_service (seleção clássica + embaralhamento). A ordem
-    embaralhada das alternativas é congelada em `alternativas_ordem`.
-    """
     simulado = sessao.get(Simulado, simulado_id)
     if simulado is None:
         raise ValueError(f"simulado {simulado_id} não encontrado")
@@ -78,7 +60,6 @@ def gerar_e_persistir(
         seed=seed if seed is not None else p.get("seed"),
     )
 
-    # Se estiver regerando, remove a seleção anterior (cascade delete-orphan)
     simulado.questoes.clear()
     sessao.flush()
 
@@ -98,7 +79,6 @@ def gerar_e_persistir(
 
 
 def liberar(sessao: Session, *, simulado_id: int) -> Simulado:
-    """Libera o simulado para os alunos responderem."""
     simulado = sessao.get(Simulado, simulado_id)
     if simulado is None:
         raise ValueError(f"simulado {simulado_id} não encontrado")
@@ -113,17 +93,12 @@ def liberar(sessao: Session, *, simulado_id: int) -> Simulado:
 def montar_questoes(
     sessao: Session, *, simulado_id: int, incluir_gabarito: bool = False
 ) -> list[dict]:
-    """Monta as questões do simulado na ordem de alternativas salva.
-
-    incluir_gabarito=True  -> visão do gestor (preview)
-    incluir_gabarito=False -> visão do aluno (sem revelar a correta)
-    """
     simulado = sessao.get(Simulado, simulado_id)
     if simulado is None:
         raise ValueError(f"simulado {simulado_id} não encontrado")
 
     questoes: list[dict] = []
-    for sq in simulado.questoes:  # já ordenadas por ordem_questao
+    for sq in simulado.questoes:
         questao = sq.questao
         alt_por_id = {a.id: a for a in questao.alternativas}
 
@@ -163,7 +138,6 @@ def registrar_resposta(
     questao_id: int,
     alternativa_id: int,
 ) -> Resposta:
-    """Salva (ou atualiza) a resposta do aluno. É o autosave do Épico 5."""
     simulado = sessao.get(Simulado, simulado_id)
     if simulado is None:
         raise ValueError(f"simulado {simulado_id} não encontrado")
@@ -183,7 +157,6 @@ def registrar_resposta(
     if alternativa is None or alternativa.questao_id != questao_id:
         raise ValueError("alternativa inválida para a questão")
 
-    # Upsert: uma resposta por (aluno, simulado, questão)
     resposta = sessao.scalar(
         select(Resposta).where(
             Resposta.aluno_id == aluno_id,
@@ -210,7 +183,6 @@ def registrar_resposta(
 
 
 def finalizar_e_corrigir(sessao: Session, *, simulado_id: int) -> dict:
-    """Encerra o simulado e calcula a nota (0 a 10) de cada aluno."""
     simulado = sessao.get(Simulado, simulado_id)
     if simulado is None:
         raise ValueError(f"simulado {simulado_id} não encontrado")
@@ -249,3 +221,69 @@ def finalizar_e_corrigir(sessao: Session, *, simulado_id: int) -> dict:
         "alunos_avaliados": len(resultados),
         "resultados": resultados,
     }
+
+
+def _exigir_editavel(simulado: Simulado) -> None:
+    if simulado.status != StatusSimulado.GERADO:
+        raise ValueError(
+            "só é possível editar o simulado no status 'gerado' (antes de liberar)"
+        )
+
+
+def remover_questao(sessao: Session, *, simulado_id: int, questao_id: int) -> Simulado:
+    simulado = sessao.get(Simulado, simulado_id)
+    if simulado is None:
+        raise ValueError(f"simulado {simulado_id} não encontrado")
+    _exigir_editavel(simulado)
+
+    alvo = next((sq for sq in simulado.questoes if sq.questao_id == questao_id), None)
+    if alvo is None:
+        raise ValueError("questão não está neste simulado")
+    if len(simulado.questoes) <= 1:
+        raise ValueError("o simulado precisa manter ao menos 1 questão")
+
+    simulado.questoes.remove(alvo)
+    sessao.flush()
+    for i, sq in enumerate(
+        sorted(simulado.questoes, key=lambda x: x.ordem_questao), start=1
+    ):
+        sq.ordem_questao = i
+    sessao.commit()
+    sessao.refresh(simulado)
+    return simulado
+
+
+def trocar_questao(
+    sessao: Session, *, simulado_id: int, questao_id: int, seed: int | None = None
+) -> Simulado:
+    simulado = sessao.get(Simulado, simulado_id)
+    if simulado is None:
+        raise ValueError(f"simulado {simulado_id} não encontrado")
+    _exigir_editavel(simulado)
+
+    alvo = next((sq for sq in simulado.questoes if sq.questao_id == questao_id), None)
+    if alvo is None:
+        raise ValueError("questão não está neste simulado")
+
+    p = simulado.parametros_json or {}
+    candidatas = questao_repository.filtrar_questoes(
+        sessao,
+        serie=p.get("serie"),
+        materia=p.get("materia"),
+        conteudos=p.get("conteudos"),
+    )
+    presentes = {sq.questao_id for sq in simulado.questoes}
+    disponiveis = [q for q in candidatas if q.id not in presentes]
+    if not disponiveis:
+        raise ValueError("não há outra questão disponível para troca com esses filtros")
+
+    rng = random.Random(seed)
+    nova = rng.choice(disponiveis)
+    alternativas = list(nova.alternativas)
+    rng.shuffle(alternativas)
+
+    alvo.questao_id = nova.id
+    alvo.alternativas_ordem = [a.id for a in alternativas]
+    sessao.commit()
+    sessao.refresh(simulado)
+    return simulado

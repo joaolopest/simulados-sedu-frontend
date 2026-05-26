@@ -1,13 +1,3 @@
-"""Popula o banco com questões de demonstração (Matemática, 9º ano).
-
-Serve para a geração de prova ter material suficiente em vários níveis.
-Idempotente: não duplica questões já existentes (checa pelo enunciado).
-
-Pré-requisitos:
-    python scripts/init_db.py
-    python scripts/seed_etiquetas.py
-"""
-
 import sys
 from pathlib import Path
 
@@ -21,7 +11,6 @@ from app.models import Alternativa, Conteudo, Materia, Nivel, Questao, Serie  # 
 SERIE = "9º ano"
 MATERIA = "Matemática"
 
-# (conteudo, nivel, enunciado, [(texto, correta), ...])
 QUESTOES = [
     ("Equação do 2º grau", "Fácil",
      "Qual é a forma geral de uma equação do 2º grau?",
@@ -95,7 +84,6 @@ def main() -> None:
 
         criadas = 0
         for conteudo_nome, nivel_nome, enunciado, alts in QUESTOES:
-            # pula se já existir questão com este enunciado
             if sessao.scalar(select(Questao).where(Questao.enunciado == enunciado)):
                 continue
 

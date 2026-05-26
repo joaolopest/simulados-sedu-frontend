@@ -1,14 +1,3 @@
-"""Teste manual de inserção e embaralhamento — modelo alinhado ao Backlog v4.
-
-Cria (ou reutiliza) Materia e Conteudo; busca Serie e Nivel já populados
-pelo seed_etiquetas.py; insere uma Questao com 4 alternativas e demonstra
-o embaralhamento sem perder o vínculo com a questão.
-
-Pré-requisitos:
-    1) python scripts/init_db.py
-    2) python scripts/seed_etiquetas.py
-"""
-
 import random
 import sys
 from pathlib import Path
@@ -53,7 +42,6 @@ def _obter_ou_criar_conteudo(sessao, nome: str, materia: Materia) -> Conteudo:
 
 def main() -> None:
     with SessionLocal() as sessao:
-        # 1) Etiquetas (Serie/Nivel já devem existir via seed; falha clara se faltarem)
         serie = sessao.scalar(select(Serie).where(Serie.nome == "8º ano"))
         nivel = sessao.scalar(select(Nivel).where(Nivel.nome == "Fácil"))
         if serie is None or nivel is None:
@@ -61,11 +49,9 @@ def main() -> None:
                 "Etiquetas faltando. Rode antes: python scripts/seed_etiquetas.py"
             )
 
-        # 2) Matéria e Conteúdo (idempotente)
         materia = _obter_ou_criar_materia(sessao, "Matemática")
         conteudo = _obter_ou_criar_conteudo(sessao, "Equação do 1º grau", materia)
 
-        # 3) Questão + alternativas (bloco inseparável criado de uma vez)
         questao = Questao(
             enunciado="Qual é a raiz da equação 2x - 8 = 0?",
             imagem_url=None,
@@ -94,7 +80,6 @@ def main() -> None:
         print(f"  Adaptacoes: {questao.adaptacoes}")
         print(f"  Enunciado:  {questao.enunciado}")
 
-        # 4) Embaralhamento em memória — não altera o banco
         alternativas_embaralhadas = list(questao.alternativas)
         random.shuffle(alternativas_embaralhadas)
 

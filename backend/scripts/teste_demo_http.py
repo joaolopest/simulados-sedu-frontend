@@ -1,9 +1,3 @@
-"""Testa o ciclo de simulado batendo nos endpoints HTTP (igual à demo web).
-
-Use com o servidor rodando:  uvicorn app.api.main:app --reload
-Depois:                      python scripts/teste_demo_http.py
-"""
-
 import json
 import urllib.request
 

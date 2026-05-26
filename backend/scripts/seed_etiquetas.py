@@ -1,9 +1,3 @@
-"""Popula as etiquetas fixas: séries e níveis.
-
-Idempotente — rodar de novo não duplica nem sobrescreve.
-Rode depois do init_db.py e antes de cadastrar qualquer questão.
-"""
-
 import sys
 from pathlib import Path
 

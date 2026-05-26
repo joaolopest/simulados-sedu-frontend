@@ -1,8 +1,3 @@
-"""Endpoints de ETIQUETAS: séries, matérias, conteúdos e níveis.
-
-São os metadados usados para classificar e filtrar questões.
-"""
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,7 +37,6 @@ def listar_conteudos(
     materia: str | None = None,
     sessao: Session = Depends(get_session),
 ) -> list[dict]:
-    """Lista conteúdos; se `materia` for informada, filtra por ela."""
     stmt = select(Conteudo).join(Materia).order_by(Conteudo.nome)
     if materia:
         stmt = stmt.where(Materia.nome == materia)

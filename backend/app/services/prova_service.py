@@ -1,23 +1,3 @@
-"""Camada de SERVIÇO: geração de prova/simulado.
-
-Aqui mora a REGRA DE NEGÓCIO. A API e a CLI só chamam `gerar_prova`.
-
-CAMINHO DA GERAÇÃO DE PROVA (passo a passo):
-    1. Recebe os parâmetros do gestor (série, matéria, conteúdos, distribuição
-       por nível, quantidade, adaptações).
-    2. Pede ao repositório as questões candidatas (filtro clássico no banco).
-    3. Seleciona respeitando a distribuição de dificuldade pedida
-       (ex.: 30% fácil, 50% médio, 20% difícil).
-    4. Embaralha as alternativas de cada questão SEM desvincular do enunciado
-       (o vínculo é a FK; o que muda é só a ordem de exibição).
-    5. Monta e devolve a prova: questões em ordem + alternativas embaralhadas
-       + gabarito (qual letra é a correta depois do embaralhamento).
-
-OBS: no produto final, esta etapa de seleção é refinada pela IA (Claude API)
-para garantir coerência pedagógica. Aqui implementamos a seleção clássica,
-que também serve de FALLBACK quando a IA está indisponível (ver backlog, seção 7).
-"""
-
 from __future__ import annotations
 
 import random
@@ -48,19 +28,18 @@ class QuestaoProva:
     conteudo: str
     nivel: str
     alternativas: list[AlternativaProva]
-    gabarito: str  # letra correta após o embaralhamento
+    gabarito: str
 
 
 @dataclass
 class Prova:
     serie: str
-    materia: str
+    materias: list[str]
     total: int
     distribuicao_real: dict[str, int]
     questoes: list[QuestaoProva] = field(default_factory=list)
 
     def gabarito_dict(self) -> dict[int, str]:
-        """Mapa {ordem_da_questao: letra_correta} — útil para correção."""
         return {q.ordem: q.gabarito for q in self.questoes}
 
 
@@ -70,10 +49,6 @@ def _selecionar_por_distribuicao(
     quantidade: int,
     rng: random.Random,
 ) -> list[Questao]:
-    """Escolhe `quantidade` questões respeitando proporção por nível.
-
-    Se faltar questão de algum nível, completa com o que houver disponível.
-    """
     por_nivel: dict[str, list[Questao]] = {}
     for q in candidatas:
         por_nivel.setdefault(q.nivel.nome, []).append(q)
@@ -86,7 +61,6 @@ def _selecionar_por_distribuicao(
         disponiveis = por_nivel.get(nivel_nome, [])
         selecionadas.extend(disponiveis[:alvo])
 
-    # Completa (ou corta) para bater exatamente a quantidade pedida
     if len(selecionadas) < quantidade:
         ja_escolhidas = {id(q) for q in selecionadas}
         resto = [q for q in candidatas if id(q) not in ja_escolhidas]
@@ -101,23 +75,22 @@ def gerar_prova(
     sessao: Session,
     *,
     serie: str,
-    materia: str,
+    materia: Optional[str] = None,
+    materias: Optional[Sequence[str]] = None,
     conteudos: Optional[Sequence[str]] = None,
     distribuicao: Optional[dict[str, float]] = None,
     quantidade: int = 10,
     adaptacoes: Optional[Sequence[str]] = None,
     seed: Optional[int] = None,
 ) -> Prova:
-    """Gera uma prova a partir do banco de questões. Função pura e testável.
-
-    `seed` fixo torna o resultado reproduzível (bom para testes e demonstração).
-    """
     rng = random.Random(seed)
+
+    materias_filtro = list(materias) if materias else ([materia] if materia else [])
 
     candidatas = questao_repository.filtrar_questoes(
         sessao,
         serie=serie,
-        materia=materia,
+        materias=materias_filtro or None,
         conteudos=conteudos,
         adaptacoes=adaptacoes,
     )
@@ -125,7 +98,7 @@ def gerar_prova(
     if not candidatas:
         raise ValueError(
             "Nenhuma questão encontrada para os filtros informados. "
-            "Verifique série/matéria/conteúdos ou popule o banco."
+            "Verifique série/matérias/conteúdos ou popule o banco."
         )
 
     if distribuicao:
@@ -140,7 +113,6 @@ def gerar_prova(
     contagem_nivel: dict[str, int] = {}
 
     for ordem, questao in enumerate(selecionadas, start=1):
-        # Embaralha as alternativas SEM tocar no banco (cópia em memória)
         alternativas = list(questao.alternativas)
         rng.shuffle(alternativas)
 
@@ -168,9 +140,13 @@ def gerar_prova(
             )
         )
 
+    materias_resultado = materias_filtro or sorted(
+        {q.materia for q in questoes_prova}
+    )
+
     return Prova(
         serie=serie,
-        materia=materia,
+        materias=materias_resultado,
         total=len(questoes_prova),
         distribuicao_real=contagem_nivel,
         questoes=questoes_prova,

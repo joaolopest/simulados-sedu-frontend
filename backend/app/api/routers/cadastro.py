@@ -20,7 +20,7 @@ from app.enums import (
     VinculoAluno,
 )
 from app.models import Aluno, ContatoResponsavel, Edital, Turma, Usuario
-from app.services.seguranca import gerar_hash_senha
+from app.services.auth_service import gerar_hash_senha
 
 router = APIRouter(prefix="/cadastro", tags=["cadastro"])
 

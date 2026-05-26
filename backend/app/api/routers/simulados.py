@@ -1,13 +1,3 @@
-"""Endpoints do ciclo de simulado (Épicos 4-6).
-
-    POST /simulados              cria o simulado (gestor)
-    POST /simulados/{id}/gerar   gera a seleção de questões e persiste
-    GET  /simulados/{id}/preview prévia COM gabarito (gestor)
-    POST /simulados/{id}/liberar libera para os alunos
-    GET  /simulados/{id}/questoes questões SEM gabarito (aluno)
-    POST /simulados/{id}/finalizar encerra e calcula notas
-"""
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -124,3 +114,35 @@ def finalizar(simulado_id: int, sessao: Session = Depends(get_session)) -> dict:
         return simulado_service.finalizar_e_corrigir(sessao, simulado_id=simulado_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/{simulado_id}/questoes/{questao_id}")
+def remover_questao(
+    simulado_id: int, questao_id: int, sessao: Session = Depends(get_session)
+) -> dict:
+    try:
+        simulado_service.remover_questao(
+            sessao, simulado_id=simulado_id, questao_id=questao_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    questoes = simulado_service.montar_questoes(
+        sessao, simulado_id=simulado_id, incluir_gabarito=True
+    )
+    return {"simulado_id": simulado_id, "questoes": questoes}
+
+
+@router.post("/{simulado_id}/questoes/{questao_id}/trocar")
+def trocar_questao(
+    simulado_id: int, questao_id: int, sessao: Session = Depends(get_session)
+) -> dict:
+    try:
+        simulado_service.trocar_questao(
+            sessao, simulado_id=simulado_id, questao_id=questao_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    questoes = simulado_service.montar_questoes(
+        sessao, simulado_id=simulado_id, incluir_gabarito=True
+    )
+    return {"simulado_id": simulado_id, "questoes": questoes}

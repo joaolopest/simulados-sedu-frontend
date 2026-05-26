@@ -1,11 +1,3 @@
-"""Testa o CICLO COMPLETO de simulado, sem precisar do servidor.
-
-Passos: monta estrutura escolar -> cria simulado -> gera -> libera ->
-aluno responde (3 certas de propósito) -> finaliza e corrige.
-
-Pré-requisitos: init_db + seed_etiquetas + seed_questoes_demo.
-"""
-
 import sys
 from pathlib import Path
 
@@ -29,7 +21,6 @@ def _obter_ou_criar_usuario(sessao, email, nome, perfil) -> Usuario:
 
 
 def _preparar_estrutura() -> tuple[int, int, int]:
-    """Cria/reutiliza escola, turma, gestor e aluno. Retorna seus ids."""
     with SessionLocal() as sessao:
         serie = sessao.scalar(select(Serie).where(Serie.nome == "9º ano"))
         if serie is None:
@@ -69,7 +60,6 @@ def main() -> None:
     gestor_id, turma_id, aluno_id = _preparar_estrutura()
     print(f"Estrutura: gestor_id={gestor_id}, turma_id={turma_id}, aluno_id={aluno_id}")
 
-    # 1) Criar simulado
     with SessionLocal() as sessao:
         simulado = simulado_service.criar_simulado(
             sessao,
@@ -87,17 +77,14 @@ def main() -> None:
         simulado_id = simulado.id
         print(f"1) Criado     -> id={simulado_id}, status={simulado.status.value}")
 
-    # 2) Gerar
     with SessionLocal() as sessao:
         simulado = simulado_service.gerar_e_persistir(sessao, simulado_id=simulado_id)
         print(f"2) Gerado     -> {len(simulado.questoes)} questoes, status={simulado.status.value}")
 
-    # 3) Liberar
     with SessionLocal() as sessao:
         simulado = simulado_service.liberar(sessao, simulado_id=simulado_id)
         print(f"3) Liberado   -> status={simulado.status.value}")
 
-    # 4) Aluno responde (acerta 3 de proposito)
     with SessionLocal() as sessao:
         questoes = simulado_service.montar_questoes(
             sessao, simulado_id=simulado_id, incluir_gabarito=True
@@ -117,7 +104,6 @@ def main() -> None:
             )
         print(f"4) Respondido -> {len(questoes)} questoes (3 corretas de proposito)")
 
-    # 5) Finalizar e corrigir
     with SessionLocal() as sessao:
         resultado = simulado_service.finalizar_e_corrigir(sessao, simulado_id=simulado_id)
         print("5) Corrigido  ->")
