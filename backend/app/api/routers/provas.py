@@ -1,0 +1,71 @@
+"""Endpoint de GERAÇÃO DE PROVA.
+
+Corresponde ao POST /simulados/:id/gerar do backlog (versão clássica/fallback).
+Recebe os parâmetros do gestor e devolve a prova montada e embaralhada.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_session
+from app.services import prova_service
+
+router = APIRouter(prefix="/provas", tags=["provas"])
+
+
+class GerarProvaRequest(BaseModel):
+    serie: str = Field(..., examples=["9º ano"])
+    materia: str = Field(..., examples=["Matemática"])
+    conteudos: list[str] | None = Field(None, examples=[["Funções", "Equação do 2º grau"]])
+    distribuicao: dict[str, float] | None = Field(
+        None,
+        description="Proporção por nível. Ex.: {'Fácil':0.3,'Médio':0.5,'Difícil':0.2}",
+        examples=[{"Fácil": 0.3, "Médio": 0.5, "Difícil": 0.2}],
+    )
+    quantidade: int = Field(10, ge=1, le=100)
+    adaptacoes: list[str] | None = Field(None, examples=[["tdah"]])
+    seed: int | None = Field(None, description="Fixa o sorteio para reproduzir o resultado")
+
+
+@router.post("/gerar")
+def gerar_prova(
+    req: GerarProvaRequest,
+    sessao: Session = Depends(get_session),
+) -> dict:
+    """Gera uma prova balanceada a partir do banco de questões."""
+    try:
+        prova = prova_service.gerar_prova(
+            sessao,
+            serie=req.serie,
+            materia=req.materia,
+            conteudos=req.conteudos,
+            distribuicao=req.distribuicao,
+            quantidade=req.quantidade,
+            adaptacoes=req.adaptacoes,
+            seed=req.seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {
+        "serie": prova.serie,
+        "materia": prova.materia,
+        "total": prova.total,
+        "distribuicao_real": prova.distribuicao_real,
+        "questoes": [
+            {
+                "ordem": q.ordem,
+                "questao_id": q.questao_id,
+                "enunciado": q.enunciado,
+                "conteudo": q.conteudo,
+                "nivel": q.nivel,
+                "alternativas": [
+                    {"letra": a.letra, "texto": a.texto, "alternativa_id": a.alternativa_id}
+                    for a in q.alternativas
+                ],
+            }
+            for q in prova.questoes
+        ],
+        "gabarito": prova.gabarito_dict(),
+    }

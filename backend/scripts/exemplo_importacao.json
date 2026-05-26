@@ -1,0 +1,47 @@
+{
+  "questoes": [
+    {
+      "enunciado": "Em f(x) = 5x - 10, qual valor de x faz f(x) = 0?",
+      "imagem_url": null,
+      "etiquetas": {
+        "serie": "9º ano",
+        "materia": "Matemática",
+        "conteudo": "Funções",
+        "nivel": "Médio"
+      },
+      "adaptacoes": ["tdah"],
+      "alternativas": [
+        { "texto": "x = 2", "correta": true, "ordem_original": 1 },
+        { "texto": "x = 5", "correta": false, "ordem_original": 2 },
+        { "texto": "x = 10", "correta": false, "ordem_original": 3 },
+        { "texto": "x = -2", "correta": false, "ordem_original": 4 }
+      ]
+    },
+    {
+      "enunciado": "Quanto vale log de 100 na base 10?",
+      "etiquetas": {
+        "serie": "9º ano",
+        "materia": "Matemática",
+        "conteudo": "Logaritmos",
+        "nivel": "Difícil"
+      },
+      "alternativas": [
+        { "texto": "2", "correta": true, "ordem_original": 1 },
+        { "texto": "10", "correta": false, "ordem_original": 2 }
+      ]
+    },
+    {
+      "enunciado": "Qual o dobro de 4?",
+      "etiquetas": {
+        "serie": "9º ano",
+        "materia": "Matemática",
+        "conteudo": "Funções",
+        "nivel": "Fácil"
+      },
+      "alternativas": [
+        { "texto": "8", "correta": false, "ordem_original": 1 },
+        { "texto": "6", "correta": false, "ordem_original": 2 }
+      ]
+    }
+  ]
+}
