@@ -114,6 +114,7 @@ export function useAtualizarQuestao() {
       atualizar<Questao>(`/admin/questoes/${vars.id}`, vars.dados),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
       qc.invalidateQueries({ queryKey: ["admin", "questao", vars.id] });
     },
   });
@@ -126,6 +127,7 @@ export function useCriarQuestao() {
       criar<Questao>("/admin/questoes", dados),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
     },
   });
 }
@@ -137,6 +139,7 @@ export function useRemoverQuestao() {
       remover<{ id: string }>(`/admin/questoes/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
     },
   });
 }
@@ -171,6 +174,30 @@ export function useAdminEscolas(filtros?: { busca?: string; ativas?: boolean }) 
       return r.dados;
     },
     staleTime: 60_000,
+  });
+}
+
+export function useCriarEscola() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dados: Partial<Escola>) =>
+      criar<EscolaComGestores>("/admin/escolas", dados),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "escolas"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
+  });
+}
+
+export function useRemoverEscola() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      remover<{ id: string }>(`/admin/escolas/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "escolas"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
   });
 }
 
@@ -219,6 +246,45 @@ export function useCriarUsuario() {
       criar<Usuario>("/admin/usuarios", dados),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "usuarios"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
+  });
+}
+
+export function useAtualizarUsuario() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; dados: Partial<Usuario> }) =>
+      atualizar<UsuarioComEscola>(`/admin/usuarios/${vars.id}`, vars.dados),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "usuarios"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
+  });
+}
+
+export function useAlterarStatusUsuario() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; ativo: boolean }) =>
+      atualizar<UsuarioComEscola>(`/admin/usuarios/${vars.id}`, {
+        ativo: vars.ativo,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "usuarios"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
+  });
+}
+
+export function useRemoverUsuario() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      remover<{ id: string }>(`/admin/usuarios/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "usuarios"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
     },
   });
 }
@@ -257,6 +323,7 @@ export function useAdminAuditoria(filtros?: FiltrosAuditoria) {
         dados: AcaoAuditoriaEnriquecida[];
         meta: { pagina: number; porPagina: number; total: number; totalPaginas: number };
       }>(`/admin/auditoria${qs ? `?${qs}` : ""}`),
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 }

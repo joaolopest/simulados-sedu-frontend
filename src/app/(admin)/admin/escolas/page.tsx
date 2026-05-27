@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Mail, MapPin, Phone, Search, UserPlus } from "lucide-react";
+import { Mail, MapPin, Phone, Plus, Search, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   useAdminEscolas,
+  useCriarEscola,
   useCriarUsuario,
+  useRemoverEscola,
   type EscolaComGestores,
 } from "@/hooks/api/use-admin";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -53,6 +63,11 @@ export default function PaginaAdminEscolas() {
   const [busca, setBusca] = useState<string>("");
   const [buscaDebounced, setBuscaDebounced] = useState<string>("");
   const [apenasAtivas, setApenasAtivas] = useState<boolean>(false);
+  const [modalCriarAberto, setModalCriarAberto] = useState<boolean>(false);
+  const [escolaRemovendo, setEscolaRemovendo] =
+    useState<EscolaComGestores | null>(null);
+
+  const remover = useRemoverEscola();
 
   useEffect(() => {
     const id = setTimeout(() => setBuscaDebounced(busca), 300);
@@ -72,19 +87,28 @@ export default function PaginaAdminEscolas() {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-10">
       {/* Header */}
-      <header>
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-          Painel administrativo
-        </p>
-        <h1
-          className="mt-2 font-serif text-3xl tracking-tight md:text-4xl"
-        >
-          Escolas
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
-          Rede de escolas conectadas ao ecossistema. Gestão por código INEP,
-          gestores e usuários atrelados.
-        </p>
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            Painel administrativo
+          </p>
+          <h1 className="mt-2 font-serif text-3xl tracking-tight md:text-4xl">
+            Escolas
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
+            Rede de escolas conectadas ao ecossistema. Gestão por código INEP,
+            gestores e usuários atrelados.
+          </p>
+        </div>
+        <Dialog open={modalCriarAberto} onOpenChange={setModalCriarAberto}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus data-icon="inline-start" />
+              Nova escola
+            </Button>
+          </DialogTrigger>
+          <FormularioNovaEscola aoSucesso={() => setModalCriarAberto(false)} />
+        </Dialog>
       </header>
 
       {/* Filtros */}
@@ -222,7 +246,18 @@ export default function PaginaAdminEscolas() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <DetalhesEscola escola={escola} />
+                        <div className="flex items-center justify-end gap-1">
+                          <DetalhesEscola escola={escola} />
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Excluir ${escola.nome}`}
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setEscolaRemovendo(escola)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -261,8 +296,17 @@ export default function PaginaAdminEscolas() {
                       {escola.totalAlunos} alunos
                     </span>
                   </div>
-                  <div className="mt-3">
+                  <div className="mt-3 flex items-center gap-2">
                     <DetalhesEscola escola={escola} />
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setEscolaRemovendo(escola)}
+                    >
+                      <Trash2 className="size-3" />
+                      Excluir
+                    </Button>
                   </div>
                 </li>
               ))}
@@ -270,6 +314,67 @@ export default function PaginaAdminEscolas() {
           </>
         )}
       </section>
+
+      {/* Dialog: confirmar exclusão de escola */}
+      <Dialog
+        open={escolaRemovendo !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setEscolaRemovendo(null);
+        }}
+      >
+        {escolaRemovendo && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Excluir escola</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Tem certeza que quer excluir{" "}
+                <strong className="text-foreground">{escolaRemovendo.nome}</strong>{" "}
+                (INEP {escolaRemovendo.codigoInep})?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                A exclusão só funciona se a escola não tiver turmas nem
+                usuários vinculados. Caso contrário, transfira ou desative
+                esses vínculos primeiro.
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEscolaRemovendo(null)}
+                disabled={remover.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={remover.isPending}
+                onClick={() => {
+                  const alvo = escolaRemovendo;
+                  remover.mutate(alvo.id, {
+                    onSuccess: () => {
+                      toast.success(`${alvo.nome} excluída`);
+                      setEscolaRemovendo(null);
+                    },
+                    onError: (erro) => {
+                      const mensagem =
+                        erro && typeof erro === "object" && "mensagem" in erro
+                          ? String((erro as { mensagem: unknown }).mensagem)
+                          : "Não foi possível excluir.";
+                      toast.error(mensagem);
+                    },
+                  });
+                }}
+              >
+                {remover.isPending ? "Excluindo..." : "Excluir definitivamente"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }
@@ -510,5 +615,206 @@ function ItemInfo({
       <Icone className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <span>{children}</span>
     </div>
+  );
+}
+
+// ============================================================
+// Modal: criar nova escola
+// ============================================================
+
+function FormularioNovaEscola({ aoSucesso }: { aoSucesso: () => void }) {
+  const criar = useCriarEscola();
+  const [nome, setNome] = useState("");
+  const [codigoInep, setCodigoInep] = useState("");
+  const [municipio, setMunicipio] = useState("");
+  const [uf, setUf] = useState("ES");
+  const [endereco, setEndereco] = useState("");
+  const [cep, setCep] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [emailContato, setEmailContato] = useState("");
+
+  const nomeOk = nome.trim().length >= 3;
+  const inepOk = /^\d{8}$/.test(codigoInep.trim());
+  const municipioOk = municipio.trim().length >= 2;
+  const ufOk = /^[A-Z]{2}$/.test(uf.toUpperCase());
+  const formularioValido = nomeOk && inepOk && municipioOk && ufOk;
+
+  function aoSubmeter(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formularioValido) return;
+    criar.mutate(
+      {
+        nome: nome.trim(),
+        codigoInep: codigoInep.trim(),
+        municipio: municipio.trim(),
+        uf: uf.toUpperCase(),
+        endereco: endereco.trim() || undefined,
+        cep: cep.trim() || undefined,
+        telefone: telefone.trim() || undefined,
+        emailContato: emailContato.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success(`${nome} cadastrada`);
+          setNome("");
+          setCodigoInep("");
+          setMunicipio("");
+          setUf("ES");
+          setEndereco("");
+          setCep("");
+          setTelefone("");
+          setEmailContato("");
+          aoSucesso();
+        },
+        onError: (erro) => {
+          const mensagem =
+            erro && typeof erro === "object" && "mensagem" in erro
+              ? String((erro as { mensagem: unknown }).mensagem)
+              : "Falha ao criar escola";
+          toast.error(mensagem);
+        },
+      },
+    );
+  }
+
+  return (
+    <DialogContent className="sm:max-w-lg">
+      <DialogHeader>
+        <DialogTitle>Nova escola</DialogTitle>
+      </DialogHeader>
+      <form onSubmit={aoSubmeter} className="space-y-4" noValidate>
+        <div>
+          <Label htmlFor="esc-nome" className="text-xs">
+            Nome <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="esc-nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="EEEFM Maria Ortiz"
+            className="mt-1.5"
+            aria-invalid={nome.length > 0 && !nomeOk}
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="esc-inep" className="text-xs">
+              Código INEP <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="esc-inep"
+              value={codigoInep}
+              onChange={(e) => setCodigoInep(e.target.value.replace(/\D/g, ""))}
+              placeholder="32012345"
+              maxLength={8}
+              inputMode="numeric"
+              className="mt-1.5 font-mono"
+              aria-invalid={codigoInep.length > 0 && !inepOk}
+            />
+            {codigoInep.length > 0 && !inepOk && (
+              <p className="mt-1 text-xs text-destructive">
+                Deve ter 8 dígitos.
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="esc-uf" className="text-xs">
+              UF <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="esc-uf"
+              value={uf}
+              onChange={(e) =>
+                setUf(e.target.value.toUpperCase().slice(0, 2))
+              }
+              placeholder="ES"
+              maxLength={2}
+              className="mt-1.5 font-mono"
+              aria-invalid={uf.length > 0 && !ufOk}
+            />
+          </div>
+        </div>
+        <div>
+          <Label htmlFor="esc-municipio" className="text-xs">
+            Município <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="esc-municipio"
+            value={municipio}
+            onChange={(e) => setMunicipio(e.target.value)}
+            placeholder="Vitória"
+            className="mt-1.5"
+            aria-invalid={municipio.length > 0 && !municipioOk}
+          />
+        </div>
+        <div>
+          <Label htmlFor="esc-endereco" className="text-xs">
+            Endereço
+          </Label>
+          <Input
+            id="esc-endereco"
+            value={endereco}
+            onChange={(e) => setEndereco(e.target.value)}
+            placeholder="Rua dos Andradas, 123"
+            className="mt-1.5"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="esc-cep" className="text-xs">
+              CEP
+            </Label>
+            <Input
+              id="esc-cep"
+              value={cep}
+              onChange={(e) => setCep(e.target.value)}
+              placeholder="29010-000"
+              className="mt-1.5 font-mono"
+            />
+          </div>
+          <div>
+            <Label htmlFor="esc-telefone" className="text-xs">
+              Telefone
+            </Label>
+            <Input
+              id="esc-telefone"
+              value={telefone}
+              onChange={(e) => setTelefone(e.target.value)}
+              placeholder="(27) 3132-1234"
+              className="mt-1.5 font-mono"
+            />
+          </div>
+        </div>
+        <div>
+          <Label htmlFor="esc-email" className="text-xs">
+            Email de contato
+          </Label>
+          <Input
+            id="esc-email"
+            type="email"
+            value={emailContato}
+            onChange={(e) => setEmailContato(e.target.value)}
+            placeholder="escola@sedu.es.gov.br"
+            className="mt-1.5"
+          />
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={aoSucesso}
+            disabled={criar.isPending}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            disabled={!formularioValido || criar.isPending}
+          >
+            {criar.isPending ? "Cadastrando..." : "Cadastrar escola"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
   );
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mockQuestoes } from "@/lib/mocks";
+import { registrarAuditoria } from "@/lib/auditoria";
 import type { Questao } from "@/types";
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -53,5 +54,26 @@ export async function POST(request: Request): Promise<NextResponse> {
     atualizadoEm: new Date().toISOString(),
     versao: 1,
   } as Questao;
+  mockQuestoes.push(nova);
+
+  registrarAuditoria({
+    tipo: "criar_questao",
+    usuarioId: nova.criadoPor ?? "usu_001",
+    usuarioNome: "Renata Albuquerque Cardoso",
+    alvoTipo: "questao",
+    alvoId: nova.id,
+    detalhes: `Cadastrou questão de ${nova.materia} (${nova.nivel})`,
+  });
+  if (nova.status === "publicada") {
+    registrarAuditoria({
+      tipo: "publicar_questao",
+      usuarioId: nova.criadoPor ?? "usu_001",
+      usuarioNome: "Renata Albuquerque Cardoso",
+      alvoTipo: "questao",
+      alvoId: nova.id,
+      detalhes: `Publicou questão recém-criada de ${nova.materia}`,
+    });
+  }
+
   return NextResponse.json(nova, { status: 201 });
 }

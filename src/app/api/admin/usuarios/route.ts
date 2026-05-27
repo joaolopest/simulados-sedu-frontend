@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mockUsuarios, mockEscolas } from "@/lib/mocks";
+import { registrarAuditoria } from "@/lib/auditoria";
 import type { PerfilUsuario, Usuario } from "@/types";
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -47,6 +48,20 @@ export async function GET(request: Request): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
   const body = (await request.json()) as Partial<Usuario>;
+
+  if (body.email) {
+    const emailNorm = body.email.toLowerCase();
+    if (mockUsuarios.some((u) => u.email.toLowerCase() === emailNorm)) {
+      return NextResponse.json(
+        {
+          codigo: "EMAIL_DUPLICADO",
+          mensagem: "Já existe um usuário com este email.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const novo: Usuario = {
     ...body,
     id: `usu_${Date.now().toString(36)}`,
@@ -54,5 +69,25 @@ export async function POST(request: Request): Promise<NextResponse> {
     criadoEm: new Date().toISOString(),
     atualizadoEm: new Date().toISOString(),
   } as Usuario;
-  return NextResponse.json(novo, { status: 201 });
+
+  mockUsuarios.push(novo);
+
+  registrarAuditoria({
+    tipo: "criar_usuario",
+    usuarioId: "usu_001",
+    usuarioNome: "Renata Albuquerque Cardoso",
+    alvoTipo: "usuario",
+    alvoId: novo.id,
+    detalhes: `Cadastrou ${novo.nome} (${novo.perfil}) - ${novo.email}`,
+  });
+
+  return NextResponse.json(
+    {
+      ...novo,
+      escola: novo.escolaId
+        ? mockEscolas.find((e) => e.id === novo.escolaId)?.nome
+        : null,
+    },
+    { status: 201 },
+  );
 }

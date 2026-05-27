@@ -45,7 +45,11 @@ export interface AcaoAuditoria {
     | "criar_simulado"
     | "liberar_simulado"
     | "criar_usuario"
-    | "editar_usuario";
+    | "editar_usuario"
+    | "remover_usuario"
+    | "criar_escola"
+    | "editar_escola"
+    | "remover_escola";
   usuarioId: string;
   usuarioNome: string;
   alvoTipo?: "questao" | "simulado" | "usuario" | "escola";

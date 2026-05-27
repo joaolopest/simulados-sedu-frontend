@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, LogOut, Menu, Settings } from "lucide-react";
+import { Bell, Home, LogOut, Menu, Settings } from "lucide-react";
 import { BrasaoSedu } from "@/components/layout/brasao-sedu";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +105,12 @@ export function HeaderAluno() {
                 <Link href="/perfil" className="gap-2">
                   <Settings className="size-3.5" aria-hidden />
                   <span>Perfil e acessibilidade</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/" className="gap-2">
+                  <Home className="size-3.5" aria-hidden />
+                  <span>Página inicial</span>
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

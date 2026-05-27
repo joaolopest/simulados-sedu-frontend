@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mockQuestoes } from "@/lib/mocks";
+import { registrarAuditoria } from "@/lib/auditoria";
 import type { Questao } from "@/types";
 
 export async function GET(
@@ -32,14 +33,35 @@ export async function PATCH(
       { status: 404 },
     );
   }
-  const atualizada: Questao = {
-    ...existente,
-    ...body,
+  // muta in-place pra persistir entre requisições
+  const statusAntes = existente.status;
+  Object.assign(existente, body, {
     id: existente.id,
     atualizadoEm: new Date().toISOString(),
     versao: existente.versao + 1,
-  };
-  return NextResponse.json(atualizada);
+  });
+
+  if (body.status && body.status !== statusAntes) {
+    registrarAuditoria({
+      tipo: body.status === "publicada" ? "publicar_questao" : "editar_questao",
+      usuarioId: "usu_001",
+      usuarioNome: "Renata Albuquerque Cardoso",
+      alvoTipo: "questao",
+      alvoId: existente.id,
+      detalhes: `Alterou status para ${body.status}`,
+    });
+  } else {
+    registrarAuditoria({
+      tipo: "editar_questao",
+      usuarioId: "usu_001",
+      usuarioNome: "Renata Albuquerque Cardoso",
+      alvoTipo: "questao",
+      alvoId: existente.id,
+      detalhes: `Editou questão de ${existente.materia}`,
+    });
+  }
+
+  return NextResponse.json(existente);
 }
 
 export async function DELETE(
@@ -48,5 +70,21 @@ export async function DELETE(
 ): Promise<NextResponse> {
   const { id } = await params;
   await new Promise((r) => setTimeout(r, 150 + Math.random() * 200));
+  const indice = mockQuestoes.findIndex((q) => q.id === id);
+  if (indice < 0) {
+    return NextResponse.json(
+      { codigo: "NAO_ENCONTRADO", mensagem: "Questão não encontrada." },
+      { status: 404 },
+    );
+  }
+  const removida = mockQuestoes.splice(indice, 1)[0];
+  registrarAuditoria({
+    tipo: "editar_questao",
+    usuarioId: "usu_001",
+    usuarioNome: "Renata Albuquerque Cardoso",
+    alvoTipo: "questao",
+    alvoId: id,
+    detalhes: `Removeu questão de ${removida.materia} (${removida.nivel})`,
+  });
   return NextResponse.json({ id, deletada: true });
 }

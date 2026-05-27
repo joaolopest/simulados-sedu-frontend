@@ -10,8 +10,12 @@ import { toast } from "sonner";
 import {
   useAdminEscolas,
   useAdminUsuarios,
+  useAlterarStatusUsuario,
+  useAtualizarUsuario,
   useCriarUsuario,
+  useRemoverUsuario,
   type FiltrosUsuario,
+  type UsuarioComEscola,
 } from "@/hooks/api/use-admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +86,15 @@ export default function PaginaAdminUsuarios() {
   const [escolaFiltro, setEscolaFiltro] = useState<string>("todas");
   const [pagina, setPagina] = useState<number>(1);
   const [modalAberto, setModalAberto] = useState<boolean>(false);
+  const [usuarioEditando, setUsuarioEditando] =
+    useState<UsuarioComEscola | null>(null);
+  const [usuarioAlterandoStatus, setUsuarioAlterandoStatus] =
+    useState<UsuarioComEscola | null>(null);
+  const [usuarioRemovendo, setUsuarioRemovendo] =
+    useState<UsuarioComEscola | null>(null);
+
+  const alterarStatus = useAlterarStatusUsuario();
+  const remover = useRemoverUsuario();
 
   useEffect(() => {
     const id = setTimeout(() => setBuscaDebounced(busca), 300);
@@ -318,22 +331,24 @@ export default function PaginaAdminUsuarios() {
                           <Button
                             variant="ghost"
                             size="xs"
-                            onClick={() => toast.success("Editor abriria aqui")}
+                            onClick={() => setUsuarioEditando(u)}
                           >
                             Editar
                           </Button>
                           <Button
                             variant="ghost"
                             size="xs"
-                            onClick={() =>
-                              toast.success(
-                                u.ativo
-                                  ? `${u.nome} desativado`
-                                  : `${u.nome} reativado`,
-                              )
-                            }
+                            onClick={() => setUsuarioAlterandoStatus(u)}
                           >
                             {u.ativo ? "Desativar" : "Reativar"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setUsuarioRemovendo(u)}
+                          >
+                            Excluir
                           </Button>
                         </div>
                       </TableCell>
@@ -384,22 +399,24 @@ export default function PaginaAdminUsuarios() {
                     <Button
                       variant="ghost"
                       size="xs"
-                      onClick={() => toast.success("Editor abriria aqui")}
+                      onClick={() => setUsuarioEditando(u)}
                     >
                       Editar
                     </Button>
                     <Button
                       variant="ghost"
                       size="xs"
-                      onClick={() =>
-                        toast.success(
-                          u.ativo
-                            ? `${u.nome} desativado`
-                            : `${u.nome} reativado`,
-                        )
-                      }
+                      onClick={() => setUsuarioAlterandoStatus(u)}
                     >
                       {u.ativo ? "Desativar" : "Reativar"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setUsuarioRemovendo(u)}
+                    >
+                      Excluir
                     </Button>
                   </div>
                 </li>
@@ -442,6 +459,161 @@ export default function PaginaAdminUsuarios() {
           </>
         )}
       </section>
+
+      {/* Dialog: editar usuário */}
+      <Dialog
+        open={usuarioEditando !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setUsuarioEditando(null);
+        }}
+      >
+        {usuarioEditando && (
+          <FormularioEditarUsuario
+            usuario={usuarioEditando}
+            escolas={escolas?.map((e) => ({ id: e.id, nome: e.nome })) ?? []}
+            aoSucesso={() => setUsuarioEditando(null)}
+          />
+        )}
+      </Dialog>
+
+      {/* Dialog: confirmar ativar/desativar */}
+      <Dialog
+        open={usuarioAlterandoStatus !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setUsuarioAlterandoStatus(null);
+        }}
+      >
+        {usuarioAlterandoStatus && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {usuarioAlterandoStatus.ativo ? "Desativar" : "Reativar"} usuário
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              {usuarioAlterandoStatus.ativo ? (
+                <>
+                  Tem certeza que quer desativar{" "}
+                  <strong className="text-foreground">
+                    {usuarioAlterandoStatus.nome}
+                  </strong>
+                  ? O acesso à plataforma será bloqueado, mas o histórico fica
+                  preservado.
+                </>
+              ) : (
+                <>
+                  Reativar{" "}
+                  <strong className="text-foreground">
+                    {usuarioAlterandoStatus.nome}
+                  </strong>{" "}
+                  vai liberar o acesso novamente.
+                </>
+              )}
+            </p>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUsuarioAlterandoStatus(null)}
+                disabled={alterarStatus.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant={
+                  usuarioAlterandoStatus.ativo ? "destructive" : "default"
+                }
+                disabled={alterarStatus.isPending}
+                onClick={() => {
+                  const alvo = usuarioAlterandoStatus;
+                  alterarStatus.mutate(
+                    { id: alvo.id, ativo: !alvo.ativo },
+                    {
+                      onSuccess: () => {
+                        toast.success(
+                          alvo.ativo
+                            ? `${alvo.nome} desativado`
+                            : `${alvo.nome} reativado`,
+                        );
+                        setUsuarioAlterandoStatus(null);
+                      },
+                      onError: () =>
+                        toast.error("Não foi possível alterar o status."),
+                    },
+                  );
+                }}
+              >
+                {alterarStatus.isPending
+                  ? "Salvando..."
+                  : usuarioAlterandoStatus.ativo
+                    ? "Desativar"
+                    : "Reativar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Dialog: confirmar exclusão */}
+      <Dialog
+        open={usuarioRemovendo !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setUsuarioRemovendo(null);
+        }}
+      >
+        {usuarioRemovendo && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Excluir usuário</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Tem certeza que quer excluir{" "}
+                <strong className="text-foreground">
+                  {usuarioRemovendo.nome}
+                </strong>{" "}
+                ({usuarioRemovendo.email})? Esta ação é{" "}
+                <strong className="text-destructive">permanente</strong> e
+                remove o usuário do sistema. Histórico de auditoria fica
+                preservado.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Se você só quer impedir o acesso temporariamente, use a opção{" "}
+                <strong>Desativar</strong>.
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUsuarioRemovendo(null)}
+                disabled={remover.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={remover.isPending}
+                onClick={() => {
+                  const alvo = usuarioRemovendo;
+                  remover.mutate(alvo.id, {
+                    onSuccess: () => {
+                      toast.success(`${alvo.nome} excluído`);
+                      setUsuarioRemovendo(null);
+                    },
+                    onError: () =>
+                      toast.error("Não foi possível excluir o usuário."),
+                  });
+                }}
+              >
+                {remover.isPending ? "Excluindo..." : "Excluir definitivamente"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }
@@ -589,6 +761,195 @@ function FormularioNovoUsuario({
             disabled={!isValid || criar.isPending}
           >
             Criar
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
+// ============================================================
+// Modal: editar usuário
+// ============================================================
+
+function FormularioEditarUsuario({
+  usuario,
+  escolas,
+  aoSucesso,
+}: {
+  usuario: UsuarioComEscola;
+  escolas: { id: string; nome: string }[];
+  aoSucesso: () => void;
+}) {
+  const atualizar = useAtualizarUsuario();
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors, isValid, isDirty },
+  } = useForm<FormUsuario>({
+    resolver: zodResolver(esquemaUsuario),
+    mode: "onChange",
+    defaultValues: {
+      nome: usuario.nome,
+      email: usuario.email,
+      perfil: usuario.perfil,
+      escolaId: usuario.escolaId ?? "",
+    },
+  });
+
+  const perfilAtual = watch("perfil");
+  const escolaAtual = watch("escolaId");
+
+  function aoSubmeter(dados: FormUsuario) {
+    atualizar.mutate(
+      { id: usuario.id, dados },
+      {
+        onSuccess: () => {
+          toast.success(`${dados.nome} atualizado`);
+          aoSucesso();
+        },
+        onError: (erro) => {
+          const mensagem =
+            erro && typeof erro === "object" && "mensagem" in erro
+              ? String((erro as { mensagem: unknown }).mensagem)
+              : "Falha ao atualizar usuário";
+          toast.error(mensagem);
+        },
+      },
+    );
+  }
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Editar usuário</DialogTitle>
+      </DialogHeader>
+      <form
+        onSubmit={handleSubmit(aoSubmeter)}
+        className="space-y-4"
+        noValidate
+      >
+        <div>
+          <Label htmlFor="edit-nome" className="text-xs">
+            Nome
+          </Label>
+          <Input
+            id="edit-nome"
+            {...register("nome")}
+            className="mt-1.5"
+            aria-invalid={!!errors.nome}
+          />
+          {errors.nome && (
+            <p className="mt-1 text-xs text-destructive">
+              {errors.nome.message}
+            </p>
+          )}
+        </div>
+        <div>
+          <Label htmlFor="edit-email" className="text-xs">
+            Email
+          </Label>
+          <Input
+            id="edit-email"
+            type="email"
+            {...register("email")}
+            className="mt-1.5"
+            aria-invalid={!!errors.email}
+          />
+          {errors.email && (
+            <p className="mt-1 text-xs text-destructive">
+              {errors.email.message}
+            </p>
+          )}
+        </div>
+        <div>
+          <Label className="text-xs">Perfil</Label>
+          <Select
+            value={perfilAtual}
+            onValueChange={(v) =>
+              setValue("perfil", v as PerfilUsuario, {
+                shouldValidate: true,
+                shouldDirty: true,
+              })
+            }
+          >
+            <SelectTrigger className="mt-1.5 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERFIS.map((p) => (
+                <SelectItem key={p.valor} value={p.valor}>
+                  {p.rotulo}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">Escola</Label>
+          <Select
+            value={escolaAtual}
+            onValueChange={(v) =>
+              setValue("escolaId", v, {
+                shouldValidate: true,
+                shouldDirty: true,
+              })
+            }
+          >
+            <SelectTrigger
+              className="mt-1.5 w-full"
+              aria-invalid={!!errors.escolaId}
+            >
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {escolas.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {errors.escolaId && (
+            <p className="mt-1 text-xs text-destructive">
+              {errors.escolaId.message}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+          <p>
+            <span className="font-mono uppercase tracking-wider">Status:</span>{" "}
+            <span
+              className={cn(
+                "ml-1",
+                usuario.ativo ? "text-success" : "text-muted-foreground",
+              )}
+            >
+              {usuario.ativo ? "Ativo" : "Inativo"}
+            </span>
+          </p>
+          <p className="mt-1">
+            Para ativar ou desativar, use o botão correspondente na lista.
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={aoSucesso}
+            disabled={atualizar.isPending}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            disabled={!isValid || !isDirty || atualizar.isPending}
+          >
+            {atualizar.isPending ? "Salvando..." : "Salvar alterações"}
           </Button>
         </DialogFooter>
       </form>

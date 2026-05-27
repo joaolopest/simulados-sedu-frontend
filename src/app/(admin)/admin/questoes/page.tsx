@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   ChevronLeft,
@@ -15,7 +16,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useAdminQuestoes, type FiltrosQuestao } from "@/hooks/api/use-admin";
+import {
+  useAdminQuestoes,
+  useAtualizarQuestao,
+  useRemoverQuestao,
+  type FiltrosQuestao,
+} from "@/hooks/api/use-admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +40,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   NOMES_ADAPTACAO,
   NOMES_MATERIA,
@@ -94,15 +107,30 @@ const TOM_STATUS: Record<StatusQuestao, string> = {
   arquivada: "bg-destructive-muted text-destructive",
 };
 
-export default function PaginaAdminQuestoes() {
+function ConteudoAdminQuestoes() {
+  const searchParams = useSearchParams();
+  const statusInicial = useMemo(() => {
+    const valor = searchParams.get("status");
+    if (!valor) return [];
+    const validos = ["rascunho", "publicada", "arquivada"] as const;
+    const itens = valor.split(",").filter((v): v is StatusQuestao =>
+      (validos as readonly string[]).includes(v),
+    );
+    return itens;
+  }, [searchParams]);
+
   const [busca, setBusca] = useState<string>("");
   const [buscaDebounced, setBuscaDebounced] = useState<string>("");
   const [series, setSeries] = useState<SerieEscolar[]>([]);
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [niveis, setNiveis] = useState<NivelDificuldade[]>([]);
   const [adaptacoes, setAdaptacoes] = useState<AdaptacaoCognitiva[]>([]);
-  const [statuses, setStatuses] = useState<StatusQuestao[]>([]);
+  const [statuses, setStatuses] = useState<StatusQuestao[]>(statusInicial);
   const [pagina, setPagina] = useState<number>(1);
+  const [questaoRemovendo, setQuestaoRemovendo] = useState<{
+    id: string;
+    enunciado: string;
+  } | null>(null);
 
   // Debounce 300ms
   useEffect(() => {
@@ -130,6 +158,25 @@ export default function PaginaAdminQuestoes() {
   );
 
   const { data, isLoading, isError, refetch } = useAdminQuestoes(filtros);
+  const atualizar = useAtualizarQuestao();
+  const remover = useRemoverQuestao();
+
+  function alterarStatusQuestao(id: string, novoStatus: StatusQuestao) {
+    atualizar.mutate(
+      { id, dados: { status: novoStatus } },
+      {
+        onSuccess: () => {
+          const labels: Record<StatusQuestao, string> = {
+            rascunho: "marcada como rascunho",
+            publicada: "publicada",
+            arquivada: "arquivada",
+          };
+          toast.success(`Questão ${labels[novoStatus]}`);
+        },
+        onError: () => toast.error("Falha ao alterar status"),
+      },
+    );
+  }
 
   const totalFiltros =
     series.length +
@@ -417,19 +464,43 @@ export default function PaginaAdminQuestoes() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {q.status !== "publicada" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    alterarStatusQuestao(q.id, "publicada")
+                                  }
+                                >
+                                  Publicar
+                                </DropdownMenuItem>
+                              )}
+                              {q.status !== "rascunho" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    alterarStatusQuestao(q.id, "rascunho")
+                                  }
+                                >
+                                  Voltar para rascunho
+                                </DropdownMenuItem>
+                              )}
+                              {q.status !== "arquivada" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    alterarStatusQuestao(q.id, "arquivada")
+                                  }
+                                >
+                                  Arquivar
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
                                 onClick={() =>
-                                  toast.success("Questão duplicada")
+                                  setQuestaoRemovendo({
+                                    id: q.id,
+                                    enunciado: q.enunciado,
+                                  })
                                 }
                               >
-                                Duplicar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  toast.success("Questão arquivada")
-                                }
-                              >
-                                Arquivar
+                                Remover
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -527,7 +598,70 @@ export default function PaginaAdminQuestoes() {
           </>
         )}
       </section>
+
+      {/* Dialog: confirmar remoção */}
+      <Dialog
+        open={questaoRemovendo !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setQuestaoRemovendo(null);
+        }}
+      >
+        {questaoRemovendo && (
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Remover questão</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Tem certeza que quer remover a questão{" "}
+                <span className="font-mono text-foreground">
+                  {questaoRemovendo.id}
+                </span>
+                ? Esta ação não pode ser desfeita.
+              </p>
+              <blockquote className="border-l-2 border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {truncar(questaoRemovendo.enunciado, 180)}
+              </blockquote>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setQuestaoRemovendo(null)}
+                disabled={remover.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={remover.isPending}
+                onClick={() => {
+                  const alvo = questaoRemovendo;
+                  remover.mutate(alvo.id, {
+                    onSuccess: () => {
+                      toast.success("Questão removida");
+                      setQuestaoRemovendo(null);
+                    },
+                    onError: () => toast.error("Falha ao remover"),
+                  });
+                }}
+              >
+                {remover.isPending ? "Removendo..." : "Remover"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
+  );
+}
+
+export default function PaginaAdminQuestoes() {
+  return (
+    <Suspense fallback={<div className="h-[500px]" aria-hidden />}>
+      <ConteudoAdminQuestoes />
+    </Suspense>
   );
 }
 

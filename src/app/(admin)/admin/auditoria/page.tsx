@@ -13,6 +13,9 @@ import {
   Sparkles,
   Upload,
   UserCog,
+  Building2,
+  Trash2,
+  UserMinus,
   UserPlus,
   X,
   type LucideIcon,
@@ -52,6 +55,10 @@ const CONFIG_TIPOS: Record<TipoAcao, ConfigTipo> = {
   liberar_simulado: { rotulo: "Liberar simulado", verbo: "liberou um simulado", icone: Send, tom: "success" },
   criar_usuario: { rotulo: "Criar usuário", verbo: "criou um usuário", icone: UserPlus, tom: "warning" },
   editar_usuario: { rotulo: "Editar usuário", verbo: "editou um usuário", icone: UserCog, tom: "warning" },
+  remover_usuario: { rotulo: "Excluir usuário", verbo: "excluiu um usuário", icone: UserMinus, tom: "warning" },
+  criar_escola: { rotulo: "Criar escola", verbo: "cadastrou uma escola", icone: Building2, tom: "ia" },
+  editar_escola: { rotulo: "Editar escola", verbo: "editou uma escola", icone: Building2, tom: "ia" },
+  remover_escola: { rotulo: "Excluir escola", verbo: "excluiu uma escola", icone: Trash2, tom: "ia" },
 };
 
 const TIPOS_ORDEM: TipoAcao[] = [
@@ -65,6 +72,10 @@ const TIPOS_ORDEM: TipoAcao[] = [
   "liberar_simulado",
   "criar_usuario",
   "editar_usuario",
+  "remover_usuario",
+  "criar_escola",
+  "editar_escola",
+  "remover_escola",
 ];
 
 const TOM_DOT: Record<ConfigTipo["tom"], string> = {
