@@ -235,7 +235,7 @@ function ConteudoLogin() {
           <Button
             type="submit"
             size="lg"
-            className="mt-1 h-11 w-full rounded-md text-sm font-medium"
+            className="botao-primario-elevado mt-1 h-11 w-full rounded-md text-sm font-medium"
             disabled={enviandoForm}
           >
             {enviandoForm ? (
