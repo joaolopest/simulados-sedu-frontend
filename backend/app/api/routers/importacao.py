@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_session
 from app.services import importacao_service
 
-router = APIRouter(prefix="/questoes", tags=["importacao"])
+from app.api.permissoes import so_admin
+
+router = APIRouter(
+    prefix="/questoes",
+    tags=["importacao"],
+    dependencies=[Depends(so_admin)],
+)
 
 
 class ImportarQuestoesRequest(BaseModel):

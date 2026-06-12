@@ -1,0 +1,20 @@
+# Ambiente virtual e cache
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Segredos e banco local — NÃO entram na imagem.
+# (o container usa a DATABASE_URL do docker-compose, não o .env do Supabase)
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -483,7 +483,9 @@ class Etapa(Base):
     folha_presenca: Mapped[Optional["FolhaPresenca"]] = relationship(
         back_populates="etapa", uselist=False,
     )
-    faltas: Mapped[List["Falta"]] = relationship(back_populates="etapa")
+    faltas: Mapped[List["Falta"]] = relationship(
+        back_populates="etapa", foreign_keys="Falta.etapa_id",
+    )
 
 
 class Agendamento(Base):

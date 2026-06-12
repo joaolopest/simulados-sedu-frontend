@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_session
 from app.services import simulado_service
 
-router = APIRouter(prefix="/simulados", tags=["simulados"])
+from app.api.permissoes import admin_gestor
+
+router = APIRouter(
+    prefix="/simulados",
+    tags=["simulados"],
+    dependencies=[Depends(admin_gestor)],
+)
 
 
 class CriarSimuladoRequest(BaseModel):

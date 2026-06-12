@@ -3,3 +3,7 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 debugpy>=1.8
 PyJWT>=2.8
+python-dotenv>=1.0
+
+# Driver PostgreSQL (Supabase). psycopg3 funciona no Python 3.14.
+psycopg[binary]>=3.1

@@ -1,0 +1,61 @@
+# Sobe a aplicação inteira: frontend + backend + banco.
+#
+#   docker compose up --build
+#
+#   frontend  -> http://localhost:3000
+#   backend   -> http://localhost:8000  (Swagger em /docs)
+#   db        -> Postgres local na porta 5432
+#
+# BANCO — duas situações automáticas:
+#   • SEM `.env` na raiz       -> o backend usa o Postgres LOCAL deste compose
+#                                 (senha local, descartável, sem segredo).
+#   • COM `.env` na raiz com   -> o backend usa o SUPABASE (banco compartilhado).
+#     DATABASE_URL=<supabase>
+#
+# Ou seja: quem clonar e rodar SEM configurar nada já tem tudo funcionando com
+# o banco local. Quem quiser o banco compartilhado cria um `.env` na raiz.
+
+services:
+  db:
+    image: postgres:16
+    container_name: sedu-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: seduc
+    ports:
+      - "5432:5432"
+    volumes:
+      - sedu_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d seduc"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build: ./backend
+    container_name: sedu-backend
+    environment:
+      # Usa o que estiver em DATABASE_URL (ex.: do `.env` da raiz = Supabase);
+      # se não houver, cai no Postgres local deste compose.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/seduc}
+      SEDU_JWT_SECRET: ${SEDU_JWT_SECRET:-dev-local-trocar-em-producao}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: sedu-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  sedu_pgdata:

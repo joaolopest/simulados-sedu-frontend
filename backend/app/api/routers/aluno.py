@@ -34,7 +34,15 @@ from app.models import (
 )
 from app.services.vinculo_service import exigir_vinculo, obter_vinculo
 
-router = APIRouter(prefix="/aluno", tags=["aluno"])
+from app.api.permissoes import exigir_dono_aluno, so_aluno
+
+# so_aluno garante o perfil; exigir_dono_aluno (por rota) garante que o
+# aluno só veja os PRÓPRIOS dados.
+router = APIRouter(
+    prefix="/aluno",
+    tags=["aluno"],
+    dependencies=[Depends(so_aluno)],
+)
 
 
 def _carregar_aluno(sessao: Session, aluno_id: int) -> Aluno:
@@ -49,7 +57,7 @@ def _carregar_aluno(sessao: Session, aluno_id: int) -> Aluno:
 # ============================================================================
 
 
-@router.get("/{aluno_id}/calendario")
+@router.get("/{aluno_id}/calendario", dependencies=[Depends(exigir_dono_aluno)])
 def calendario(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
     aluno = _carregar_aluno(sessao, aluno_id)
     vinculo = obter_vinculo(aluno)
@@ -132,7 +140,7 @@ class InscricaoRequest(BaseModel):
     observacoes: str | None = None
 
 
-@router.get("/{aluno_id}/agendamentos")
+@router.get("/{aluno_id}/agendamentos", dependencies=[Depends(exigir_dono_aluno)])
 def listar_agendamentos(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
     aluno = _carregar_aluno(sessao, aluno_id)
     lista = (
@@ -150,7 +158,7 @@ def listar_agendamentos(aluno_id: int, sessao: Session = Depends(get_session)) -
     }
 
 
-@router.post("/{aluno_id}/agendamentos", status_code=201)
+@router.post("/{aluno_id}/agendamentos", status_code=201, dependencies=[Depends(exigir_dono_aluno)])
 def inscrever_em_etapa(
     aluno_id: int,
     req: InscricaoRequest,
@@ -239,7 +247,7 @@ def _serializar_agendamento(a: Agendamento) -> dict:
 # ============================================================================
 
 
-@router.get("/{aluno_id}/editais")
+@router.get("/{aluno_id}/editais", dependencies=[Depends(exigir_dono_aluno)])
 def listar_editais(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
     aluno = _carregar_aluno(sessao, aluno_id)
     exigir_vinculo(aluno, VinculoAluno.SUPLETIVO)
@@ -277,7 +285,7 @@ def listar_editais(aluno_id: int, sessao: Session = Depends(get_session)) -> dic
 # ============================================================================
 
 
-@router.get("/{aluno_id}/resultados")
+@router.get("/{aluno_id}/resultados", dependencies=[Depends(exigir_dono_aluno)])
 def resultados(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
     aluno = _carregar_aluno(sessao, aluno_id)
     respostas = sessao.query(Resposta).filter(Resposta.aluno_id == aluno_id).all()
@@ -314,7 +322,7 @@ def resultados(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
 # ============================================================================
 
 
-@router.get("/{aluno_id}/guia-estudos")
+@router.get("/{aluno_id}/guia-estudos", dependencies=[Depends(exigir_dono_aluno)])
 def guia_de_estudos(
     aluno_id: int,
     baseado_em_simulado_id: int | None = None,
@@ -417,7 +425,7 @@ class SimuladoEstudoRequest(BaseModel):
     baseado_em_simulado_id: int | None = None
 
 
-@router.post("/{aluno_id}/simulado-estudo", status_code=201)
+@router.post("/{aluno_id}/simulado-estudo", status_code=201, dependencies=[Depends(exigir_dono_aluno)])
 def gerar_simulado_estudo(
     aluno_id: int,
     req: SimuladoEstudoRequest,

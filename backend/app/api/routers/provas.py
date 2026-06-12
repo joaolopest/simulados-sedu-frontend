@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_session
 from app.services import prova_service
 
-router = APIRouter(prefix="/provas", tags=["provas"])
+from app.api.permissoes import admin_gestor
+
+router = APIRouter(
+    prefix="/provas",
+    tags=["provas"],
+    dependencies=[Depends(admin_gestor)],
+)
 
 
 class GerarProvaRequest(BaseModel):

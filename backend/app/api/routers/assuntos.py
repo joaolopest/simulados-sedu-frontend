@@ -12,6 +12,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
+from app.api.permissoes import (
+    admin_gestor,
+    admin_gestor_suporte,
+    exigir_dono_aluno,
+    so_admin,
+)
 from app.enums import PrioridadeAssunto, VinculoAluno
 from app.models import (
     Aluno,
@@ -78,7 +84,7 @@ def _serializar(a: AssuntoEstudo) -> dict:
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(admin_gestor_suporte)])
 def listar(
     materia_id: int | None = Query(None),
     serie_id: int | None = Query(None),
@@ -105,7 +111,7 @@ def listar(
     return {"total": len(assuntos), "dados": [_serializar(a) for a in assuntos]}
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(so_admin)])
 def criar(req: AssuntoCriarRequest, sessao: Session = Depends(get_session)) -> dict:
     if not sessao.get(Materia, req.materia_id):
         raise HTTPException(status_code=400, detail="materia_id inexistente.")
@@ -142,7 +148,7 @@ def criar(req: AssuntoCriarRequest, sessao: Session = Depends(get_session)) -> d
 # --- por turma ---
 
 
-@router.get("/turmas/{turma_id}")
+@router.get("/turmas/{turma_id}", dependencies=[Depends(admin_gestor)])
 def assuntos_da_turma(turma_id: int, sessao: Session = Depends(get_session)) -> dict:
     turma = sessao.get(Turma, turma_id)
     if not turma:
@@ -156,7 +162,7 @@ def assuntos_da_turma(turma_id: int, sessao: Session = Depends(get_session)) -> 
     }
 
 
-@router.post("/turmas/{turma_id}")
+@router.post("/turmas/{turma_id}", dependencies=[Depends(admin_gestor)])
 def selecionar_assuntos_turma(
     turma_id: int,
     req: SelecionarAssuntosTurmaRequest,
@@ -195,7 +201,7 @@ def selecionar_assuntos_turma(
 # --- aluno (🔴 escola) ---
 
 
-@router.get("/aluno/{aluno_id}")
+@router.get("/aluno/{aluno_id}", dependencies=[Depends(exigir_dono_aluno)])
 def assuntos_para_aluno(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
     aluno = sessao.get(Aluno, aluno_id)
     if not aluno:

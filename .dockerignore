@@ -1,0 +1,27 @@
+# Contexto de build do FRONTEND (raiz). Mantém a imagem enxuta.
+node_modules
+.next
+out
+build
+
+# Backend tem o próprio build/contexto — não precisa aqui
+backend
+
+# Git e infra
+.git
+.gitignore
+.claude
+docker-compose.yml
+Dockerfile.frontend
+
+# Segredos e locks alternativos
+.env
+.env*.local
+pnpm-lock.yaml
+
+# Sistema / IDE
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+npm-debug.log*

@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_session
 from app.services import simulado_service
 
-router = APIRouter(prefix="/respostas", tags=["respostas"])
+from app.api.permissoes import so_aluno
+
+router = APIRouter(
+    prefix="/respostas",
+    tags=["respostas"],
+    dependencies=[Depends(so_aluno)],
+)
 
 
 class ResponderRequest(BaseModel):

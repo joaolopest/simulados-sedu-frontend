@@ -14,7 +14,13 @@ from app.api.deps import get_session
 from app.enums import StatusEtapa, TipoItemCalendarioLetivo
 from app.models import Etapa, ItemCalendarioLetivo
 
-router = APIRouter(prefix="/calendario", tags=["calendario"])
+from app.api.permissoes import admin_gestor
+
+router = APIRouter(
+    prefix="/calendario",
+    tags=["calendario"],
+    dependencies=[Depends(admin_gestor)],
+)
 
 
 class ItemCalendarioRequest(BaseModel):

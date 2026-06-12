@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_session
 from app.models import Conteudo, Materia, Nivel, Serie
 
-router = APIRouter(prefix="/etiquetas", tags=["etiquetas"])
+from app.api.permissoes import autenticado
+
+router = APIRouter(
+    prefix="/etiquetas",
+    tags=["etiquetas"],
+    dependencies=[Depends(autenticado)],
+)
 
 
 @router.get("/series")

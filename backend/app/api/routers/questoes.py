@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
+from app.api.permissoes import admin_gestor_suporte, so_admin
 from app.models import Questao
 from app.repositories import questao_repository
 from app.services import questao_service
@@ -46,7 +47,11 @@ def _serializar(questao: Questao) -> dict:
     }
 
 
-@router.get("", summary="Listar e filtrar questões do banco")
+@router.get(
+    "",
+    summary="Listar e filtrar questões do banco",
+    dependencies=[Depends(admin_gestor_suporte)],
+)
 def listar_questoes(
     serie: str | None = Query(None, description="Ex.: '9º ano'"),
     materia: str | None = Query(None, description="Ex.: 'Matemática'"),
@@ -66,7 +71,11 @@ def listar_questoes(
     return [_serializar(q) for q in questoes]
 
 
-@router.post("", summary="Cadastrar uma questão")
+@router.post(
+    "",
+    summary="Cadastrar uma questão",
+    dependencies=[Depends(so_admin)],
+)
 def cadastrar_questao(
     req: CadastrarQuestaoRequest, sessao: Session = Depends(get_session)
 ) -> dict:

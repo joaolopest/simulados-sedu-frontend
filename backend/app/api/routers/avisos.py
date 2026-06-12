@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
+from app.api.permissoes import admin_gestor_suporte, exigir_dono_aluno
 from app.enums import AlvoAvisoTipo, PrioridadeAviso, VinculoAluno
 from app.models import Aluno, Aviso, Usuario
 from app.services.vinculo_service import exigir_vinculo
@@ -49,7 +50,7 @@ def _serializar(a: Aviso) -> dict:
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(admin_gestor_suporte)])
 def listar(
     turma_id: int | None = Query(None),
     escola_id: int | None = Query(None),
@@ -71,7 +72,7 @@ def listar(
     return {"total": len(avisos), "dados": [_serializar(a) for a in avisos]}
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(admin_gestor_suporte)])
 def criar(req: AvisoCriarRequest, sessao: Session = Depends(get_session)) -> dict:
     if req.alvo_tipo is AlvoAvisoTipo.TURMA and not req.turma_id:
         raise HTTPException(status_code=422, detail="turma_id é obrigatório para alvo 'turma'.")
@@ -100,7 +101,7 @@ def criar(req: AvisoCriarRequest, sessao: Session = Depends(get_session)) -> dic
 # --- aluno (🔴 escola apenas) ---
 
 
-@router.get("/aluno/{aluno_id}")
+@router.get("/aluno/{aluno_id}", dependencies=[Depends(exigir_dono_aluno)])
 def listar_para_aluno(aluno_id: int, sessao: Session = Depends(get_session)) -> dict:
     aluno = sessao.get(Aluno, aluno_id)
     if not aluno:

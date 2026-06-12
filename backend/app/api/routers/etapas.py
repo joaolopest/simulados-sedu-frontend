@@ -36,7 +36,14 @@ from app.models import (
     Usuario,
 )
 
-router = APIRouter(prefix="/etapas", tags=["etapas"])
+from app.api.permissoes import admin_gestor, admin_gestor_suporte
+
+# Leitura: admin/gestor/suporte. Escritas adicionam `admin_gestor` por rota.
+router = APIRouter(
+    prefix="/etapas",
+    tags=["etapas"],
+    dependencies=[Depends(admin_gestor_suporte)],
+)
 
 
 # ---------- Schemas ----------
@@ -147,7 +154,7 @@ def listar(
     return [_resumo(e) for e in q.order_by(Etapa.data.desc()).all()]
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(admin_gestor)])
 def criar(req: EtapaCriarRequest, sessao: Session = Depends(get_session)) -> dict:
     if not sessao.get(Usuario, req.criado_por):
         raise HTTPException(status_code=400, detail="criado_por não corresponde a usuário existente.")
@@ -181,7 +188,7 @@ def detalhar(etapa_id: int, sessao: Session = Depends(get_session)) -> dict:
     return _resumo(_carregar_etapa(sessao, etapa_id))
 
 
-@router.patch("/{etapa_id}")
+@router.patch("/{etapa_id}", dependencies=[Depends(admin_gestor)])
 def atualizar(
     etapa_id: int,
     req: EtapaAtualizarRequest,
@@ -274,7 +281,7 @@ def listar_faltas(etapa_id: int, sessao: Session = Depends(get_session)) -> dict
     }
 
 
-@router.post("/{etapa_id}/reagendar", status_code=201)
+@router.post("/{etapa_id}/reagendar", status_code=201, dependencies=[Depends(admin_gestor)])
 def reagendar(
     etapa_id: int, req: ReagendarRequest, sessao: Session = Depends(get_session),
 ) -> dict:
@@ -362,7 +369,7 @@ def get_presenca(etapa_id: int, sessao: Session = Depends(get_session)) -> dict:
     return _serializar_folha(folha, etapa)
 
 
-@router.post("/{etapa_id}/presenca", status_code=201)
+@router.post("/{etapa_id}/presenca", status_code=201, dependencies=[Depends(admin_gestor)])
 def registrar_presenca(
     etapa_id: int,
     req: RegistrarPresencaRequest,

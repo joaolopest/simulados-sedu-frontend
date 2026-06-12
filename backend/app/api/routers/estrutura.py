@@ -18,7 +18,13 @@ from app.api.deps import get_session
 from app.enums import VinculoAluno
 from app.models import Aluno, Escola, Turma
 
-router = APIRouter(prefix="/estrutura", tags=["estrutura"])
+from app.api.permissoes import admin_gestor_suporte
+
+router = APIRouter(
+    prefix="/estrutura",
+    tags=["estrutura"],
+    dependencies=[Depends(admin_gestor_suporte)],
+)
 
 
 # ---------- helpers de serialização ----------

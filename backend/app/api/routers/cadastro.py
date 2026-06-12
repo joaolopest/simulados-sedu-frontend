@@ -22,7 +22,13 @@ from app.enums import (
 from app.models import Aluno, ContatoResponsavel, Edital, Turma, Usuario
 from app.services.auth_service import gerar_hash_senha
 
-router = APIRouter(prefix="/cadastro", tags=["cadastro"])
+from app.api.permissoes import admin_gestor
+
+router = APIRouter(
+    prefix="/cadastro",
+    tags=["cadastro"],
+    dependencies=[Depends(admin_gestor)],
+)
 
 
 class EnderecoIn(BaseModel):
