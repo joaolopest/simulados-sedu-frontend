@@ -21,7 +21,13 @@ export function ToggleTema() {
       size="icon"
       className="size-9"
       onClick={() => setTheme(eDark ? "light" : "dark")}
-      aria-label={eDark ? "Mudar para tema claro" : "Mudar para tema escuro"}
+      aria-label={
+        montado
+          ? eDark
+            ? "Mudar para tema claro"
+            : "Mudar para tema escuro"
+          : "Alternar tema"
+      }
     >
       {montado ? (
         eDark ? (

@@ -1,79 +1,127 @@
-import { NextResponse } from "next/server";
-import { mockQuestoes } from "@/lib/mocks";
-import { registrarAuditoria } from "@/lib/auditoria";
-import type { Questao } from "@/types";
+﻿import { NextResponse } from "next/server";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import {
+  mapQuestao,
+  materiaParaNome,
+  nivelParaNome,
+  serieParaNome,
+  type QuestaoBackend,
+} from "@/lib/backend-maps";
+
+interface CorpoQuestao {
+  enunciado?: string;
+  serie?: string;
+  materia?: string;
+  conteudo?: string;
+  nivel?: string;
+  adaptacoes?: string[];
+  competencias?: string[];
+  explicacao?: string | null;
+  tempoEstimadoSegundos?: number;
+  status?: string;
+  imagemUrl?: string | null;
+  criadoPor?: string;
+  alternativas?: { texto: string; correta?: boolean }[];
+}
+
+function respostaErro(erro: unknown): NextResponse {
+  if (erro instanceof ErroBackend) {
+    return NextResponse.json(erro.corpo, { status: erro.status });
+  }
+  return NextResponse.json(
+    { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+    { status: 500 },
+  );
+}
+
+interface ListaBackend {
+  total: number;
+  pagina: number;
+  por_pagina: number;
+  dados: QuestaoBackend[];
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
+  const token = tokenDaRequisicao(request);
   const url = new URL(request.url);
-  const busca = url.searchParams.get("busca")?.toLowerCase() ?? "";
-  const series = url.searchParams.getAll("serie");
-  const materias = url.searchParams.getAll("materia");
-  const niveis = url.searchParams.getAll("nivel");
-  const adaptacoes = url.searchParams.getAll("adaptacao");
-  const status = url.searchParams.getAll("status");
-  const pagina = parseInt(url.searchParams.get("pagina") ?? "1", 10);
-  const porPagina = parseInt(url.searchParams.get("porPagina") ?? "20", 10);
+  const pagina = url.searchParams.get("pagina") ?? "1";
+  const porPagina = url.searchParams.get("porPagina") ?? "20";
 
-  let lista: Questao[] = mockQuestoes;
-  if (busca) {
-    lista = lista.filter((q) => q.enunciado.toLowerCase().includes(busca));
+  try {
+    const resp = await backendFetch<ListaBackend>("/questoes", {
+      token,
+      query: {
+        busca: url.searchParams.get("busca") ?? undefined,
+        // filtros vÃªm em code; o Python filtra por nome de exibiÃ§Ã£o
+        serie: url.searchParams.getAll("serie").map(serieParaNome),
+        materia: url.searchParams.getAll("materia").map(materiaParaNome),
+        nivel: url.searchParams.getAll("nivel").map(nivelParaNome),
+        status: url.searchParams.getAll("status"),
+        adaptacao: url.searchParams.getAll("adaptacao"),
+        pagina,
+        por_pagina: porPagina,
+      },
+    });
+
+    const porPaginaNum = parseInt(porPagina, 10) || 20;
+    return NextResponse.json({
+      dados: resp.dados.map(mapQuestao),
+      meta: {
+        pagina: parseInt(pagina, 10) || 1,
+        porPagina: porPaginaNum,
+        total: resp.total,
+        totalPaginas: Math.max(1, Math.ceil(resp.total / porPaginaNum)),
+      },
+    });
+  } catch (erro) {
+    return respostaErro(erro);
   }
-  if (series.length) lista = lista.filter((q) => series.includes(q.serie));
-  if (materias.length) lista = lista.filter((q) => materias.includes(q.materia));
-  if (niveis.length) lista = lista.filter((q) => niveis.includes(q.nivel));
-  if (status.length) lista = lista.filter((q) => status.includes(q.status));
-  if (adaptacoes.length) {
-    lista = lista.filter((q) =>
-      q.adaptacoes.some((a) => adaptacoes.includes(a)),
-    );
-  }
-
-  const total = lista.length;
-  const inicio = (pagina - 1) * porPagina;
-  const dados = lista.slice(inicio, inicio + porPagina);
-
-  return NextResponse.json({
-    dados,
-    meta: {
-      pagina,
-      porPagina,
-      total,
-      totalPaginas: Math.ceil(total / porPagina),
-    },
-  });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
-  const body = (await request.json()) as Partial<Questao>;
-  const nova: Questao = {
-    ...body,
-    id: `que_${Date.now().toString(36)}`,
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-    versao: 1,
-  } as Questao;
-  mockQuestoes.push(nova);
+  const token = tokenDaRequisicao(request);
 
-  registrarAuditoria({
-    tipo: "criar_questao",
-    usuarioId: nova.criadoPor ?? "usu_001",
-    usuarioNome: "Renata Albuquerque Cardoso",
-    alvoTipo: "questao",
-    alvoId: nova.id,
-    detalhes: `Cadastrou questão de ${nova.materia} (${nova.nivel})`,
-  });
-  if (nova.status === "publicada") {
-    registrarAuditoria({
-      tipo: "publicar_questao",
-      usuarioId: nova.criadoPor ?? "usu_001",
-      usuarioNome: "Renata Albuquerque Cardoso",
-      alvoTipo: "questao",
-      alvoId: nova.id,
-      detalhes: `Publicou questão recém-criada de ${nova.materia}`,
-    });
+  let body: CorpoQuestao;
+  try {
+    body = (await request.json()) as CorpoQuestao;
+  } catch {
+    return NextResponse.json(
+      { codigo: "CORPO_INVALIDO", mensagem: "Corpo da requisiÃ§Ã£o invÃ¡lido." },
+      { status: 400 },
+    );
   }
 
-  return NextResponse.json(nova, { status: 201 });
+  const payload = {
+    enunciado: body.enunciado,
+    serie: body.serie ? serieParaNome(body.serie) : undefined,
+    materia: body.materia ? materiaParaNome(body.materia) : undefined,
+    conteudo: body.conteudo,
+    nivel: body.nivel ? nivelParaNome(body.nivel) : undefined,
+    adaptacoes: body.adaptacoes ?? [],
+    competencias: body.competencias ?? [],
+    explicacao: body.explicacao ?? null,
+    tempo_estimado_segundos: body.tempoEstimadoSegundos ?? 60,
+    status: body.status ?? "rascunho",
+    imagem_url: body.imagemUrl ?? null,
+    criado_por_id:
+      typeof body.criadoPor === "string" && /^\d+$/.test(body.criadoPor)
+        ? Number(body.criadoPor)
+        : null,
+    alternativas: (body.alternativas ?? []).map((a) => ({
+      texto: a.texto,
+      correta: !!a.correta,
+    })),
+  };
+
+  try {
+    const py = await backendFetch<QuestaoBackend>("/questoes", {
+      method: "POST",
+      token,
+      body: payload,
+    });
+    const criada = mapQuestao(py);
+    return NextResponse.json(criada, { status: 201 });
+  } catch (erro) {
+    return respostaErro(erro);
+  }
 }

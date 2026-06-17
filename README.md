@@ -30,15 +30,22 @@ Frontend da plataforma de simulados da Secretaria de Estado da Educação de Ser
 
 ## Como rodar localmente
 
-```bash
+```powershell
 git clone https://github.com/joaolopest/simulados-sedu-frontend.git
 cd simulados-sedu-frontend
-pnpm install
-cp .env.example .env.local   # preencher chaves de IA e backend
-pnpm dev
+.\scripts\start-app.ps1
 ```
 
 Aplicação sobe em `http://localhost:3000`.
+
+O script usa Supabase quando `DATABASE_URL` está configurado e acessível. Se o Supabase não responder, ele sobe o Postgres local Docker e roda o seed persistente do banco.
+
+Para rodar só o frontend:
+
+```powershell
+npm install
+npm run dev
+```
 
 ## Deploy
 

@@ -21,7 +21,9 @@ interface RespostaNotificacoes {
 const HOME_POR_PERFIL: Record<PerfilUsuario, string> = {
   admin: "/admin/dashboard",
   gestor: "/gestor/dashboard",
+  professor: "/professor/dashboard",
   aluno: "/aluno/home",
+  candidato: "/aluno/home",
   suporte: "/suporte/dashboard",
 };
 

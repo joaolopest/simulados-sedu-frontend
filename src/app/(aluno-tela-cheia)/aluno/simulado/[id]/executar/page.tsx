@@ -63,9 +63,6 @@ export default function PaginaExecutarSimulado({
     irParaQuestao,
     alternarModoFoco,
     finalizarSimulado,
-    adicionarAFila,
-    obterRespostasDaFila,
-    limparFila,
     limpar,
   } = useSimuladoStore();
 
@@ -77,7 +74,7 @@ export default function PaginaExecutarSimulado({
   // inicializa o simulado no store quando os dados chegam
   useEffect(() => {
     if (data?.simulado && simuladoAtual?.id !== data.simulado.id) {
-      iniciarSimulado(data.simulado);
+      iniciarSimulado(data.simulado, data.respostas ?? []);
     }
   }, [data, simuladoAtual?.id, iniciarSimulado]);
 
@@ -87,16 +84,6 @@ export default function PaginaExecutarSimulado({
       setModalOfflineAberta(true);
     }
   }, [online]);
-
-  // sincroniza fila pendente quando volta online
-  useEffect(() => {
-    if (online) {
-      const fila = obterRespostasDaFila();
-      if (fila.length > 0) {
-        void sincronizarFila(id, fila, limparFila);
-      }
-    }
-  }, [online, id, obterRespostasDaFila, limparFila]);
 
   const questoes = data?.questoes ?? [];
   const totalQuestoes = questoes.length;
@@ -142,7 +129,6 @@ export default function PaginaExecutarSimulado({
     avisos: [300, 60, 30],
     aoAvisar,
     aoTerminar: () => void aoTerminarTempo(),
-    persistirEm: `timer-simulado-${id}`,
   });
 
   // autosave da resposta atual
@@ -151,7 +137,7 @@ export default function PaginaExecutarSimulado({
     async (resposta: RespostaQuestao | null) => {
       if (!resposta || !resposta.alternativaId) return;
       if (!online) {
-        adicionarAFila(resposta);
+        toast.error("Sem conexao com o backend. A resposta ainda nao foi salva.");
         return;
       }
       try {
@@ -160,11 +146,10 @@ export default function PaginaExecutarSimulado({
           alternativaId: resposta.alternativaId,
         });
       } catch {
-        // se falhar online, vai pra fila e tenta depois
-        adicionarAFila(resposta);
+        toast.error("Nao foi possivel salvar a resposta no banco.");
       }
     },
-    [id, online, adicionarAFila],
+    [id, online],
   );
 
   const { estado: estadoAutosave, ultimoSalvoEm } = useAutosave({
@@ -175,7 +160,7 @@ export default function PaginaExecutarSimulado({
       Boolean(valorAutosave) && valorAutosave?.alternativaId !== undefined,
   });
 
-  const respostasPendentes = obterRespostasDaFila().length;
+  const respostasPendentes = 0;
 
   // atalhos teclado
   useAtalhosTeclado(
@@ -492,8 +477,8 @@ export default function PaginaExecutarSimulado({
             </div>
             <DialogTitle>Sem conexão com a internet</DialogTitle>
             <DialogDescription>
-              Pode continuar respondendo. Suas respostas estão sendo guardadas
-              localmente e vão sincronizar quando a conexão voltar.
+              As respostas precisam ser salvas no banco. Aguarde a conexão
+              voltar antes de finalizar o simulado.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -535,10 +520,14 @@ export default function PaginaExecutarSimulado({
             <Button
               onClick={async () => {
                 setEnviandoFinal(true);
-                await enviarFinal(id, respostas, false);
-                finalizarSimulado();
-                limpar();
-                router.push(`/aluno/simulado/${id}/resultado`);
+                try {
+                  await enviarFinal(id, respostas, false);
+                  finalizarSimulado();
+                  limpar();
+                  router.push(`/aluno/simulado/${id}/resultado`);
+                } finally {
+                  setEnviandoFinal(false);
+                }
               }}
               disabled={enviandoFinal}
               className="gap-2"
@@ -589,26 +578,6 @@ function Legenda({ cor, rotulo }: { cor: string; rotulo: string }) {
   );
 }
 
-async function sincronizarFila(
-  simuladoId: string,
-  fila: RespostaQuestao[],
-  aoLimpar: () => void,
-): Promise<void> {
-  try {
-    for (const resposta of fila) {
-      if (!resposta.alternativaId) continue;
-      await atualizar(`/simulados/${simuladoId}/responder`, {
-        questaoId: resposta.questaoId,
-        alternativaId: resposta.alternativaId,
-      });
-    }
-    aoLimpar();
-    toast.success(`${fila.length} ${fila.length === 1 ? "resposta enviada" : "respostas enviadas"}`);
-  } catch {
-    toast.error("Não consegui sincronizar tudo. Tentando de novo em segundos.");
-  }
-}
-
 async function enviarFinal(
   simuladoId: string,
   respostas: Record<string, RespostaQuestao>,
@@ -619,7 +588,8 @@ async function enviarFinal(
       respostas: Object.values(respostas),
       porTempoEsgotado,
     });
-  } catch {
-    toast.error("Falha ao enviar — tentando novamente em segundo plano.");
+  } catch (erro) {
+    toast.error("Falha ao enviar respostas para o banco.");
+    throw erro;
   }
 }

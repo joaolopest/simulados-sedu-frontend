@@ -1,4 +1,10 @@
-export type PerfilUsuario = "admin" | "gestor" | "aluno" | "suporte";
+export type PerfilUsuario =
+  | "admin"
+  | "gestor"
+  | "professor"
+  | "aluno"
+  | "candidato"
+  | "suporte";
 
 export type AdaptacaoCognitiva =
   | "tdah"

@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -33,6 +34,7 @@ from app.enums import (
     StatusAgendamento,
     StatusEtapa,
     StatusPresenca,
+    StatusQuestao,
     StatusSimulado,
     TipoEtapa,
     TipoItemCalendarioLetivo,
@@ -108,6 +110,10 @@ class Nivel(Base):
 
 class Questao(Base):
     __tablename__ = "questoes"
+    __table_args__ = (
+        Index("ix_questoes_escola_status", "escola_id", "status"),
+        Index("ix_questoes_criador_status", "criado_por_id", "status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     enunciado: Mapped[str] = mapped_column(Text, nullable=False)
@@ -120,14 +126,34 @@ class Questao(Base):
 
     adaptacoes: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
+    status: Mapped[StatusQuestao] = mapped_column(
+        SAEnum(StatusQuestao), default=StatusQuestao.RASCUNHO, nullable=False,
+    )
+    tempo_estimado_segundos: Mapped[int] = mapped_column(
+        Integer, default=60, nullable=False,
+    )
+    competencias: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    explicacao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    versao: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    criado_por_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True,
+    )
+    escola_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("escolas.id"), nullable=True,
+    )
+
     criada_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    atualizada_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
     )
 
     serie: Mapped["Serie"] = relationship(back_populates="questoes")
     materia: Mapped["Materia"] = relationship(back_populates="questoes")
     conteudo: Mapped["Conteudo"] = relationship(back_populates="questoes")
     nivel: Mapped["Nivel"] = relationship(back_populates="questoes")
+    escola: Mapped[Optional["Escola"]] = relationship()
 
     alternativas: Mapped[List["Alternativa"]] = relationship(
         back_populates="questao",
@@ -164,13 +190,24 @@ class Usuario(Base):
     senha_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     perfil: Mapped[PerfilUsuario] = mapped_column(SAEnum(PerfilUsuario), nullable=False)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    escola_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("escolas.id"), nullable=True,
+    )
+    foto_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ultimo_acesso: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    atualizado_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
     )
 
     aluno: Mapped[Optional["Aluno"]] = relationship(
         back_populates="usuario", uselist=False,
     )
+    escola: Mapped[Optional["Escola"]] = relationship()
     avisos_criados: Mapped[List["Aviso"]] = relationship(back_populates="criado_por_usuario")
 
 
@@ -181,6 +218,19 @@ class Escola(Base):
     nome: Mapped[str] = mapped_column(String(160), nullable=False)
     municipio: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     codigo_inep: Mapped[Optional[str]] = mapped_column(String(20), unique=True, nullable=True)
+    uf: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    endereco: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    cep: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    telefone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    email_contato: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    total_professores: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    criada_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True,
+    )
+    atualizada_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
     turmas: Mapped[List["Turma"]] = relationship(
         back_populates="escola", cascade="all, delete-orphan",
@@ -268,6 +318,9 @@ class Aluno(Base):
         back_populates="aluno", cascade="all, delete-orphan",
     )
     respostas: Mapped[List["Resposta"]] = relationship(back_populates="aluno")
+    simulado_inscricoes: Mapped[List["SimuladoInscricao"]] = relationship(
+        back_populates="aluno", cascade="all, delete-orphan",
+    )
     agendamentos: Mapped[List["Agendamento"]] = relationship(back_populates="aluno")
     presencas: Mapped[List["RegistroPresenca"]] = relationship(back_populates="aluno")
     guias_estudo: Mapped[List["GuiaEstudo"]] = relationship(back_populates="aluno")
@@ -667,7 +720,35 @@ class Simulado(Base):
         cascade="all, delete-orphan",
         order_by="SimuladoQuestao.ordem_questao",
     )
+    inscricoes: Mapped[List["SimuladoInscricao"]] = relationship(
+        back_populates="simulado", cascade="all, delete-orphan",
+    )
     respostas: Mapped[List["Resposta"]] = relationship(back_populates="simulado")
+
+
+class SimuladoInscricao(Base):
+    __tablename__ = "simulado_inscricoes"
+    __table_args__ = (
+        UniqueConstraint("simulado_id", "aluno_id", name="uq_simulado_inscricao"),
+        Index("ix_simulado_inscricoes_aluno", "aluno_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    simulado_id: Mapped[int] = mapped_column(
+        ForeignKey("simulados.id", ondelete="CASCADE"), nullable=False,
+    )
+    aluno_id: Mapped[int] = mapped_column(ForeignKey("alunos.id"), nullable=False)
+    inscrito_por_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), default="inscrito", nullable=False)
+    inscrito_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+    simulado: Mapped["Simulado"] = relationship(back_populates="inscricoes")
+    aluno: Mapped["Aluno"] = relationship(back_populates="simulado_inscricoes")
+    inscrito_por: Mapped[Optional["Usuario"]] = relationship()
 
 
 class SimuladoQuestao(Base):
@@ -715,3 +796,81 @@ class Resposta(Base):
     simulado: Mapped["Simulado"] = relationship(back_populates="respostas")
     questao: Mapped["Questao"] = relationship()
     alternativa: Mapped["Alternativa"] = relationship()
+
+
+# ============================================================================
+# NOTIFICAÇÕES E AUDITORIA
+# ============================================================================
+
+
+class Notificacao(Base):
+    __tablename__ = "notificacoes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(40), nullable=False)
+    titulo: Mapped[str] = mapped_column(String(200), nullable=False)
+    mensagem: Mapped[str] = mapped_column(Text, nullable=False)
+    destinatario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=False,
+    )
+    origem_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    origem_tipo: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    lida: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    acao_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    acao_label: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    criada_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    lida_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+
+class AcaoAuditoria(Base):
+    __tablename__ = "acoes_auditoria"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(40), nullable=False)
+    usuario_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True,
+    )
+    usuario_nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    alvo_tipo: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    alvo_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    detalhes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ip_origem: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    ocorrido_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+
+class RevisaoQuestao(Base):
+    __tablename__ = "revisoes_questao"
+    __table_args__ = (
+        Index("ix_revisoes_questao_status_escola", "status", "escola_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    questao_id: Mapped[int] = mapped_column(ForeignKey("questoes.id"), nullable=False)
+    solicitante_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), nullable=False)
+    escola_id: Mapped[Optional[int]] = mapped_column(ForeignKey("escolas.id"), nullable=True)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    motivo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pendente", nullable=False)
+    resposta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resolvido_por_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True,
+    )
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    resolvido_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    questao: Mapped["Questao"] = relationship()
+    solicitante: Mapped["Usuario"] = relationship(foreign_keys=[solicitante_id])
+    resolvido_por: Mapped[Optional["Usuario"]] = relationship(
+        foreign_keys=[resolvido_por_id],
+    )
+    escola: Mapped[Optional["Escola"]] = relationship()

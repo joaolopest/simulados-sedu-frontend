@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
+import { ToggleTema } from "@/components/layout/toggle-tema";
 import { cn } from "@/lib/utils";
 
 const ANCORAS = [
@@ -26,8 +27,9 @@ export function HeaderLanding() {
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 w-full bg-marble transition-all duration-200",
-        rolou && "bg-marble/70 backdrop-blur-[20px] backdrop-saturate-[150%] border-b border-shade/10 shadow-none",
+        "sticky top-0 z-40 w-full bg-marble transition-all duration-200 dark:bg-shade",
+        rolou &&
+          "border-b border-shade/10 bg-marble/70 shadow-none backdrop-blur-[20px] backdrop-saturate-[150%] dark:border-marble/10 dark:bg-shade/80",
       )}
       data-slot="header-landing"
     >
@@ -37,9 +39,7 @@ export function HeaderLanding() {
           className="flex items-center gap-2"
           aria-label="Simulados SEDU"
         >
-          <span
-            className="font-sans text-xl font-bold tracking-[-0.03em] text-shade"
-          >
+          <span className="font-sans text-xl font-bold tracking-[-0.03em] text-shade dark:text-marble">
             Simulados<span className="text-hydrangea">SEDU</span>
           </span>
         </Link>
@@ -49,7 +49,7 @@ export function HeaderLanding() {
             <a
               key={a.id}
               href={`#${a.id}`}
-              className="rounded-full px-4 py-2 text-sm font-medium text-shade transition-colors hover:bg-shade/8"
+              className="rounded-full px-4 py-2 text-sm font-medium text-shade transition-colors hover:bg-shade/8 dark:text-marble dark:hover:bg-marble/10"
             >
               {a.rotulo}
             </a>
@@ -57,39 +57,40 @@ export function HeaderLanding() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <ToggleTema />
           <Link
             href="/login"
-            className="hidden rounded-full px-5 py-2 text-sm font-semibold text-shade transition-colors hover:bg-shade/8 md:inline-flex"
+            className="hidden rounded-full px-5 py-2 text-sm font-semibold text-shade transition-colors hover:bg-shade/8 dark:text-marble dark:hover:bg-marble/10 md:inline-flex"
           >
             Entrar
           </Link>
           <Link
             href="/login"
-            className="inline-flex items-center justify-center rounded-full bg-shade px-5 py-2.5 text-sm font-bold text-marble transition-all hover:bg-shade/90 active:translate-y-px"
+            className="inline-flex items-center justify-center rounded-full bg-shade px-5 py-2.5 text-sm font-bold text-marble transition-all hover:bg-shade/90 active:translate-y-px dark:bg-marble dark:text-shade dark:hover:bg-chartreuse"
           >
             Acessar plataforma
           </Link>
           <button
             type="button"
             onClick={() => setAberto((v) => !v)}
-            className="ml-1 inline-flex size-10 items-center justify-center rounded-full hover:bg-shade/8 md:hidden"
+            className="ml-1 inline-flex size-10 items-center justify-center rounded-full hover:bg-shade/8 dark:hover:bg-marble/10 md:hidden"
             aria-label="Abrir menu"
           >
-            <Menu className="size-5 text-shade" aria-hidden />
+            <Menu className="size-5 text-shade dark:text-marble" aria-hidden />
           </button>
         </div>
       </div>
 
       {/* mobile menu */}
       {aberto && (
-        <div className="border-t border-shade/10 bg-marble md:hidden motion-materialize">
+        <div className="border-t border-shade/10 bg-marble motion-materialize dark:border-marble/10 dark:bg-shade md:hidden">
           <nav className="px-4 py-4">
             {ANCORAS.map((a) => (
               <a
                 key={a.id}
                 href={`#${a.id}`}
                 onClick={() => setAberto(false)}
-                className="block rounded-full px-4 py-3 text-sm font-medium text-shade hover:bg-shade/8"
+                className="block rounded-full px-4 py-3 text-sm font-medium text-shade hover:bg-shade/8 dark:text-marble dark:hover:bg-marble/10"
               >
                 {a.rotulo}
               </a>

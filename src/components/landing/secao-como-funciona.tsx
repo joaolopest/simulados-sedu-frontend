@@ -83,7 +83,7 @@ export function SecaoComoFunciona() {
   return (
     <section
       id="como-funciona"
-      className="bg-marble"
+      className="bg-marble transition-colors dark:bg-shade"
       data-slot="secao-como-funciona"
       aria-labelledby="como-funciona-titulo"
     >
@@ -99,7 +99,7 @@ export function SecaoComoFunciona() {
           </p>
           <h2
             id="como-funciona-titulo"
-            className="mt-4 font-sans text-shade font-display-bold"
+            className="mt-4 font-sans text-shade font-display-bold dark:text-marble"
             style={{               fontSize: "clamp(2.25rem, 5vw, 3.75rem)",
               lineHeight: "1.06",
               letterSpacing: "-0.02em",

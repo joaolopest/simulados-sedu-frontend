@@ -41,6 +41,7 @@ import {
   formatarTempoRelativo,
   gerarIniciais,
 } from "@/lib/utils";
+import { criar } from "@/lib/api";
 import { obterNomeAdaptacao } from "@/lib/displays";
 
 type FiltroFaixa = "todos" | "alta" | "media" | "baixa";
@@ -51,21 +52,6 @@ const FAIXAS: { valor: FiltroFaixa; rotulo: string }[] = [
   { valor: "media", rotulo: "Média (40–70%)" },
   { valor: "baixa", rotulo: "Baixa (<40%)" },
 ];
-
-// Histórico mock de notas (estável dentro da sessão por aluno)
-function gerarSerieMock(seed: string): number[] {
-  let h = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  const serie: number[] = [];
-  for (let i = 0; i < 6; i += 1) {
-    h = (1664525 * h + 1013904223) >>> 0;
-    const valor = 3 + (h % 600) / 100; // 3.0 .. 9.0
-    serie.push(parseFloat(valor.toFixed(1)));
-  }
-  return serie;
-}
 
 // ============================================================
 // Página
@@ -418,14 +404,10 @@ function DetalhesAlerta({ alerta }: { alerta: AlertaRisco }) {
   const [acao, setAcao] = useState<string>("");
   const [salvando, setSalvando] = useState<boolean>(false);
 
-  const serie = useMemo(
-    () =>
-      gerarSerieMock(alerta.aluno.id).map((nota, indice) => ({
-        rodada: indice + 1,
-        nota,
-      })),
-    [alerta.aluno.id],
-  );
+  const serie = useMemo(() => {
+    if (alerta.historicoNotas?.length) return alerta.historicoNotas;
+    return [{ rodada: 1, nota: alerta.ultimaNota }];
+  }, [alerta.historicoNotas, alerta.ultimaNota]);
 
   const pct = Math.round(alerta.probabilidadeRisco * 100);
   const faixa = classificarFaixa(alerta.probabilidadeRisco);
@@ -438,8 +420,7 @@ function DetalhesAlerta({ alerta }: { alerta: AlertaRisco }) {
     }
     setSalvando(true);
     try {
-      // Mock — só simula latência
-      await new Promise((r) => setTimeout(r, 600));
+      await criar(`/suporte/aluno/${alerta.aluno.id}/nota`, { texto: acao.trim() });
       toast.success("Ação pedagógica registrada.");
       setAcao("");
     } catch {

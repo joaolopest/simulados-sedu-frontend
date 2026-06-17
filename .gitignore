@@ -29,6 +29,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.npm-cache/
+.pycache-codex/
 
 # env files (segredos) — mas os .env.example (templates) vão pro git
 .env*
@@ -44,5 +46,13 @@ next-env.d.ts
 # Claude Code (config local — não subir)
 .claude/
 
+# Rollbacks locais do Codex
+codex-rollback/
+
 # pnpm (projeto usa npm)
 pnpm-lock.yaml
+
+# Backups locais do banco/Supabase
+/backups/
+*.dump
+*.backup

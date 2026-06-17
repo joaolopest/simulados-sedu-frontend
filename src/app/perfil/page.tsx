@@ -25,21 +25,27 @@ import type { PerfilUsuario } from "@/types";
 const HOME_POR_PERFIL: Record<PerfilUsuario, string> = {
   admin: "/admin/dashboard",
   gestor: "/gestor/dashboard",
+  professor: "/professor/dashboard",
   aluno: "/aluno/home",
+  candidato: "/aluno/home",
   suporte: "/suporte/dashboard",
 };
 
 const ROTULO_PERFIL: Record<PerfilUsuario, string> = {
   admin: "Administrador — Secretaria",
   gestor: "Gestor — Coordenação",
+  professor: "Professor",
   aluno: "Aluno",
+  candidato: "Candidato",
   suporte: "Suporte — Professor/Secretário",
 };
 
 const TOM_PERFIL: Record<PerfilUsuario, string> = {
   admin: "bg-primary-muted text-primary-text",
   gestor: "bg-ia-muted text-ia",
+  professor: "bg-muted text-foreground",
   aluno: "bg-success-muted text-success",
+  candidato: "bg-success-muted text-success",
   suporte: "bg-warning-muted text-warning",
 };
 

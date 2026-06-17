@@ -1,24 +1,17 @@
-# Sobe a aplicação inteira: frontend + backend + banco.
+# Frontend + backend. O Postgres local fica no profile `local-db` para nao
+# subir quando DATABASE_URL aponta para Supabase.
 #
-#   docker compose up --build
+# Supabase:
+#   docker compose up --build backend frontend
 #
-#   frontend  -> http://localhost:3000
-#   backend   -> http://localhost:8000  (Swagger em /docs)
-#   db        -> Postgres local na porta 5432
-#
-# BANCO — duas situações automáticas:
-#   • SEM `.env` na raiz       -> o backend usa o Postgres LOCAL deste compose
-#                                 (senha local, descartável, sem segredo).
-#   • COM `.env` na raiz com   -> o backend usa o SUPABASE (banco compartilhado).
-#     DATABASE_URL=<supabase>
-#
-# Ou seja: quem clonar e rodar SEM configurar nada já tem tudo funcionando com
-# o banco local. Quem quiser o banco compartilhado cria um `.env` na raiz.
+# Banco local:
+#   docker compose --profile local-db up --build
 
 services:
   db:
     image: postgres:16
     container_name: sedu-db
+    profiles: ["local-db"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -37,21 +30,18 @@ services:
     build: ./backend
     container_name: sedu-backend
     environment:
-      # Usa o que estiver em DATABASE_URL (ex.: do `.env` da raiz = Supabase);
-      # se não houver, cai no Postgres local deste compose.
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/seduc}
       SEDU_JWT_SECRET: ${SEDU_JWT_SECRET:-dev-local-trocar-em-producao}
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: sedu-frontend
+    environment:
+      BACKEND_URL: http://backend:8000
     ports:
       - "3000:3000"
     depends_on:

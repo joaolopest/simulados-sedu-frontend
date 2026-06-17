@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
-from app.services import importacao_service
+from app.models import Usuario
+from app.services import auditoria_service, importacao_service
 
 from app.api.permissoes import so_admin
 
@@ -45,6 +46,8 @@ class ImportarQuestoesRequest(BaseModel):
 @router.post("/import", summary="Importar questões em lote (JSON da SEDUC)")
 def importar_questoes(
     req: ImportarQuestoesRequest,
+    request: Request,
+    usuario: Usuario = Depends(so_admin),
     sessao: Session = Depends(get_session),
 ) -> dict:
     try:
@@ -53,6 +56,19 @@ def importar_questoes(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="importacao",
+        alvo_tipo="questao",
+        detalhes=(
+            f"Importou questoes: {relatorio.importadas} aceitas, "
+            f"{relatorio.rejeitadas} rejeitadas."
+        ),
+        request=request,
+    )
+    sessao.commit()
 
     return {
         "importadas": relatorio.importadas,

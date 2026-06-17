@@ -291,7 +291,7 @@ function CardSimulado({ simulado }: { simulado: Simulado }) {
       ? `${Math.floor(tempoMin / 60)}h${tempoMin % 60 > 0 ? ` ${tempoMin % 60}min` : ""}`
       : `${tempoMin} min`;
 
-  // progresso fake-derivado (mock real virá do backend de acompanhamento)
+  // Progresso derivado até a rota de acompanhamento retornar eventos em tempo real.
   // pra status em_andamento podemos exibir uma barra leve baseada em criadoEm/encerraEm
   const progresso = useMemo(() => {
     if (status !== "em_andamento") return null;

@@ -1,93 +1,98 @@
 import { NextResponse } from "next/server";
-import { mockUsuarios, mockEscolas } from "@/lib/mocks";
-import { registrarAuditoria } from "@/lib/auditoria";
-import type { PerfilUsuario, Usuario } from "@/types";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import { mapUsuario, type UsuarioBackend } from "@/lib/backend-maps";
+
+function comEscola(py: UsuarioBackend) {
+  return { ...mapUsuario(py), escola: py.escola_nome ?? null };
+}
+
+function respostaErro(erro: unknown): NextResponse {
+  if (erro instanceof ErroBackend) {
+    return NextResponse.json(erro.corpo, { status: erro.status });
+  }
+  return NextResponse.json(
+    { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+    { status: 500 },
+  );
+}
+
+interface ListaBackend {
+  total: number;
+  pagina: number;
+  por_pagina: number;
+  dados: UsuarioBackend[];
+}
+
+function payloadUsuario(body: Record<string, unknown>): Record<string, unknown> {
+  const { escolaId, ...resto } = body;
+  return {
+    ...resto,
+    escola_id:
+      typeof escolaId === "string" && escolaId.length > 0
+        ? Number(escolaId)
+        : undefined,
+  };
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
+  const token = tokenDaRequisicao(request);
   const url = new URL(request.url);
-  const busca = url.searchParams.get("busca")?.toLowerCase() ?? "";
-  const perfis = url.searchParams.getAll("perfil") as PerfilUsuario[];
-  const escolaId = url.searchParams.get("escolaId");
-  const apenasAtivos = url.searchParams.get("ativos") === "true";
-  const pagina = parseInt(url.searchParams.get("pagina") ?? "1", 10);
-  const porPagina = parseInt(url.searchParams.get("porPagina") ?? "30", 10);
 
-  let lista: Usuario[] = mockUsuarios;
-  if (busca) {
-    lista = lista.filter(
-      (u) =>
-        u.nome.toLowerCase().includes(busca) ||
-        u.email.toLowerCase().includes(busca),
-    );
+  const perfil = url.searchParams.getAll("perfil");
+  const pagina = url.searchParams.get("pagina") ?? "1";
+  const porPagina = url.searchParams.get("porPagina") ?? "30";
+
+  try {
+    const resp = await backendFetch<ListaBackend>("/usuarios", {
+      token,
+      query: {
+        busca: url.searchParams.get("busca") ?? undefined,
+        perfil: perfil.length ? perfil : undefined,
+        ativo: url.searchParams.get("ativos") === "true" ? true : undefined,
+        escola_id: url.searchParams.get("escolaId") ?? undefined,
+        pagina,
+        por_pagina: porPagina,
+      },
+    });
+
+    const porPaginaNum = parseInt(porPagina, 10) || 30;
+    return NextResponse.json({
+      dados: resp.dados.map(comEscola),
+      meta: {
+        pagina: parseInt(pagina, 10) || 1,
+        porPagina: porPaginaNum,
+        total: resp.total,
+        totalPaginas: Math.max(1, Math.ceil(resp.total / porPaginaNum)),
+      },
+    });
+  } catch (erro) {
+    return respostaErro(erro);
   }
-  if (perfis.length) lista = lista.filter((u) => perfis.includes(u.perfil));
-  if (escolaId) lista = lista.filter((u) => u.escolaId === escolaId);
-  if (apenasAtivos) lista = lista.filter((u) => u.ativo);
-
-  const total = lista.length;
-  const inicio = (pagina - 1) * porPagina;
-  const dados = lista.slice(inicio, inicio + porPagina).map((u) => ({
-    ...u,
-    escola: u.escolaId
-      ? mockEscolas.find((e) => e.id === u.escolaId)?.nome
-      : null,
-  }));
-
-  return NextResponse.json({
-    dados,
-    meta: {
-      pagina,
-      porPagina,
-      total,
-      totalPaginas: Math.ceil(total / porPagina),
-    },
-  });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
-  const body = (await request.json()) as Partial<Usuario>;
+  const token = tokenDaRequisicao(request);
 
-  if (body.email) {
-    const emailNorm = body.email.toLowerCase();
-    if (mockUsuarios.some((u) => u.email.toLowerCase() === emailNorm)) {
-      return NextResponse.json(
-        {
-          codigo: "EMAIL_DUPLICADO",
-          mensagem: "Já existe um usuário com este email.",
-        },
-        { status: 409 },
-      );
-    }
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json(
+      { codigo: "CORPO_INVALIDO", mensagem: "Corpo da requisição inválido." },
+      { status: 400 },
+    );
   }
 
-  const novo: Usuario = {
-    ...body,
-    id: `usu_${Date.now().toString(36)}`,
-    ativo: true,
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-  } as Usuario;
+  try {
+    const py = await backendFetch<UsuarioBackend>("/usuarios", {
+      method: "POST",
+      token,
+      body: payloadUsuario(body),
+    });
+    const criado = comEscola(py);
 
-  mockUsuarios.push(novo);
-
-  registrarAuditoria({
-    tipo: "criar_usuario",
-    usuarioId: "usu_001",
-    usuarioNome: "Renata Albuquerque Cardoso",
-    alvoTipo: "usuario",
-    alvoId: novo.id,
-    detalhes: `Cadastrou ${novo.nome} (${novo.perfil}) - ${novo.email}`,
-  });
-
-  return NextResponse.json(
-    {
-      ...novo,
-      escola: novo.escolaId
-        ? mockEscolas.find((e) => e.id === novo.escolaId)?.nome
-        : null,
-    },
-    { status: 201 },
-  );
+    return NextResponse.json(criado, { status: 201 });
+  } catch (erro) {
+    return respostaErro(erro);
+  }
 }

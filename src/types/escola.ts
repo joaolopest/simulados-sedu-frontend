@@ -41,18 +41,33 @@ export interface AcaoAuditoria {
     | "criar_questao"
     | "editar_questao"
     | "publicar_questao"
+    | "remover_questao"
+    | "arquivar_questao"
+    | "solicitacao_revisao"
+    | "resolucao_revisao"
+    | "importacao"
     | "importar_questoes"
     | "criar_simulado"
+    | "gerar_simulado"
+    | "montar_simulado"
+    | "editar_simulado"
     | "liberar_simulado"
+    | "finalizar_simulado"
     | "criar_usuario"
     | "editar_usuario"
     | "remover_usuario"
     | "criar_escola"
     | "editar_escola"
-    | "remover_escola";
+    | "remover_escola"
+    | "criar_aluno"
+    | "inscrever_aluno_simulado"
+    | "responder_questao"
+    | "finalizar_respostas"
+    | "registrar_nota_suporte"
+    | "solicitar_apoio_presencial";
   usuarioId: string;
   usuarioNome: string;
-  alvoTipo?: "questao" | "simulado" | "usuario" | "escola";
+  alvoTipo?: "questao" | "simulado" | "usuario" | "escola" | "aluno" | "revisao_questao";
   alvoId?: string;
   detalhes?: string;
   ipOrigem?: string;

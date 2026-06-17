@@ -1,126 +1,109 @@
-# SEDU Simulados — Backend (API do Banco de Questões)
+# SEDU Simulados - Backend
 
-Backend do Sistema de Simulados Educacionais (SEDU-ES). Projeto da residência
-em software.
+API FastAPI da plataforma de simulados. O banco principal é Supabase/Postgres; o Postgres local via Docker é fallback e backup.
 
 ## Stack
 
-- Python 3.12 (no Docker) / 3.x local
+- Python 3.12
 - FastAPI + SQLAlchemy 2.x
-- PostgreSQL (Supabase em produção, Postgres local no Docker)
+- PostgreSQL
+- Supabase como banco principal
+- Docker Compose para fallback local
 
----
+## Banco
 
-## Como rodar — 3 formas
+A aplicação usa apenas PostgreSQL em runtime, seja Supabase ou Docker local.
 
-### Forma 1 — Docker (recomendada, "clone e roda")
+Ordem de conexão:
 
-Sobe a **aplicação inteira** (frontend + backend + Postgres + dados) com um
-comando. **Não precisa de `.env` nem senha.** Os dados (220 usuários, 60
-questões, etc.) são populados automaticamente.
+1. `DATABASE_URL` em `backend/.env` ou `.env` da raiz aponta para Supabase.
+2. Se não houver `.env` ou a conexão falhar, use o script da raiz para subir o Postgres local Docker.
+3. Migrações idempotentes rodam antes do seed.
+4. `scripts/seed_demo.py` completa lacunas sem apagar dados existentes.
 
-```bash
-# na raiz do projeto (onde está o docker-compose.yml)
-docker compose up --build
+## Como rodar
+
+### Automático com fallback
+
+Na raiz do projeto:
+
+```powershell
+.\scripts\start-app.ps1
 ```
 
-Pronto:
-- **Frontend** em http://localhost:3000
-- **Backend** em http://localhost:8000 (Swagger em /docs)
-- **Postgres local** na porta 5432 (usuário/senha: `postgres`/`postgres`)
+Esse script:
 
-Qual banco o backend usa:
-- **Sem `.env` na raiz** → Postgres **local** do compose (padrão, já com dados)
-- **Com `.env` na raiz** com `DATABASE_URL=<supabase>` → usa o **Supabase**
+- lê `.env` e `backend\.env`;
+- testa o Supabase;
+- mantém o banco Docker parado quando Supabase está disponível;
+- sobe o Postgres local Docker quando o Supabase não responde;
+- inicia backend e frontend.
 
-Comandos úteis:
-- Parar (mantém os dados): `docker compose down`
-- Zerar tudo (apaga o banco local): `docker compose down -v`
-- Subir de novo (rápido): `docker compose up`
-- Ver logs: `docker compose logs -f backend`
-
-### Forma 2 — Supabase (banco compartilhado, em nuvem)
-
-Use quando quiser que o time veja **os mesmos dados** ou for fazer deploy.
-Precisa da connection string (peça pra quem administra — vem por canal seguro,
-nunca pelo git).
+### Backend manual
 
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# copie .env.example para .env e cole a connection string do Supabase
-copy .env.example .env
-# edite .env e troque [SUA_SENHA] pela senha do banco
-
+python scripts\init_db.py
+python scripts\seed_demo.py
 python -m uvicorn app.api.main:app --reload
 ```
 
-### Forma 3 — SQLite local (sem nada compartilhado, offline)
+### Banco local explícito
 
-Sem `.env`, o backend usa um SQLite local (`seduc_questoes.db`).
+Na raiz:
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python scripts\init_db.py            # cria tabelas
-python scripts\seed_from_mocks.py    # popula com os dados dos mocks
-python -m uvicorn app.api.main:app --reload
+docker compose --profile local-db up -d db
 ```
 
----
+Use:
 
-## Acesso (usuários de teste)
-
-Todos com senha **`sedu123`**. Um de cada perfil:
-
-| Email | Perfil | Acessa |
-|---|---|---|
-| admin@sedu.se.gov.br | admin | tudo |
-| gestor@sedu.se.gov.br | gestor | simulados, etapas, avisos, ver questões |
-| suporte@sedu.se.gov.br | suporte | ver alunos/questões, avisos |
-| aluno@sedu.se.gov.br | aluno | só os próprios dados |
-
-Também dá pra logar com os 216 usuários do mock (ex.: `renata.cardoso@sedu.es.gov.br`).
-
-## Permissões (RBAC)
-
-Cada rota exige token JWT + perfil adequado:
-- Sem token → **401**
-- Perfil errado → **403**
-- Aluno tentando ver dados de outro aluno → **403** (checagem de dono)
-
-## Repopular os dados
-
-```bash
-# 1. na raiz: exporta os mocks do frontend para JSON
-npx tsx scripts/export-mocks.ts
-# 2. em backend/: importa pro banco configurado (Supabase ou local)
-python scripts/seed_from_mocks.py
+```powershell
+$env:DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/seduc"
 ```
 
-## Estrutura
+## Backup Supabase -> Docker Local
 
-```
-backend/
-├── Dockerfile              # imagem do backend (Python 3.12)
-├── docker-entrypoint.py    # espera DB, cria tabelas, popula, sobe a API
-├── .env.example            # modelo de configuração (copie para .env)
-├── app/
-│   ├── database.py         # engine/sessão — lê DATABASE_URL do .env
-│   ├── enums.py            # perfis, status, etc.
-│   ├── models.py           # 27 tabelas ORM
-│   └── api/
-│       ├── main.py         # registra os routers
-│       ├── permissoes.py   # RBAC (exigir_perfil, exigir_dono_aluno)
-│       └── routers/        # auth, estrutura, etapas, aluno, questoes, ...
-└── scripts/
-    ├── init_db.py          # cria as tabelas
-    ├── seed_from_mocks.py  # popula com os dados do frontend
-    └── verificar_banco.py  # testa conexão e lista tabelas
+Na raiz:
+
+```powershell
+.\scripts\sync-supabase-to-local.ps1 -Yes
 ```
 
-> `docker-compose.yml` fica na **raiz** do projeto (não em `backend/`).
+O sync copia Supabase para o Postgres local. Ele pode sobrescrever o backup local, mas não apaga o Supabase.
+
+## Acesso de Demonstração
+
+Todos usam senha `sedu123`.
+
+| Email | Perfil |
+| --- | --- |
+| admin@sedu.se.gov.br | admin |
+| gestor@sedu.se.gov.br | gestor |
+| professor@sedu.se.gov.br | professor |
+| roberto.nogueira@sedu.es.gov.br | suporte |
+| aluno@sedu.se.gov.br | aluno |
+| candidato@sedu.se.gov.br | candidato |
+
+## Permissões
+
+- Admin: acesso total, auditoria, revisões e gestão global.
+- Gestor: turmas, provas, questões e suporte dentro da própria escola.
+- Professor: cria provas, cria questões, edita próprias questões e solicita revisão para questões de outros.
+- Suporte: vê alunos com necessidade de suporte da própria escola e registra acompanhamento.
+- Aluno/candidato: acessam apenas os próprios dados e resultados.
+
+O backend é a fonte de autorização. O frontend apenas esconde ou desabilita opções.
+
+## Scripts
+
+```text
+backend/scripts/init_db.py      cria tabelas e aplica migrações idempotentes
+backend/scripts/seed_demo.py    completa dados persistentes mínimos
+backend/scripts/reset_db.py     reseta banco local/dev e roda seed
+scripts/start-app.ps1           inicia app com fallback Supabase -> Docker
+scripts/sync-supabase-to-local.ps1  copia Supabase para backup local
+```

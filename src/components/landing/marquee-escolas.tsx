@@ -3,6 +3,7 @@
 import { type CSSProperties, type RefObject } from "react";
 import { Award, Building2, MapPin, Users } from "lucide-react";
 import { useContadorAnimado } from "@/hooks/use-contador-animado";
+import { useLandingPublica } from "@/hooks/api/use-publico";
 
 function NumeroAnimado({
   valorFinal,
@@ -27,107 +28,60 @@ function NumeroAnimado({
   );
 }
 
-interface TileEscola {
-  inicial: string;
-  nome: string;
-  cidade: string;
-  bg: string;
-  texto: string;
-  acento: string;
-}
+const ESTILOS_TILE = [
+  { bg: "bg-shade", texto: "text-marble", acento: "bg-chartreuse" },
+  { bg: "bg-chartreuse", texto: "text-shade", acento: "bg-shade" },
+  { bg: "bg-orchid", texto: "text-marble", acento: "bg-chartreuse" },
+  { bg: "bg-poppy", texto: "text-shade", acento: "bg-shade" },
+  { bg: "bg-iris", texto: "text-marble", acento: "bg-sky" },
+  { bg: "bg-canopy", texto: "text-shade", acento: "bg-forest" },
+  { bg: "bg-rose", texto: "text-marble", acento: "bg-chartreuse" },
+  { bg: "bg-sky", texto: "text-shade", acento: "bg-iris" },
+] as const;
 
-// estilo Linktree trusted-by: tiles com cores DIFERENTES por slot (cada um tem identidade)
-const TILES_PRINCIPAIS: TileEscola[] = [
-  {
-    inicial: "VV",
-    nome: "EEEFM",
-    cidade: "Vila Velha",
-    bg: "bg-shade",
-    texto: "text-marble",
-    acento: "bg-chartreuse",
-  },
-  {
-    inicial: "CC",
-    nome: "EMEF",
-    cidade: "Cariacica",
-    bg: "bg-chartreuse",
-    texto: "text-shade",
-    acento: "bg-shade",
-  },
-  {
-    inicial: "SR",
-    nome: "EEEFM",
-    cidade: "Serra",
-    bg: "bg-orchid",
-    texto: "text-marble",
-    acento: "bg-chartreuse",
-  },
-  {
-    inicial: "VT",
-    nome: "EEEFM",
-    cidade: "Vitória",
-    bg: "bg-poppy",
-    texto: "text-shade",
-    acento: "bg-shade",
-  },
-  {
-    inicial: "CI",
-    nome: "EMEF",
-    cidade: "Cachoeiro",
-    bg: "bg-iris",
-    texto: "text-marble",
-    acento: "bg-sky",
-  },
-  {
-    inicial: "LH",
-    nome: "EEEFM",
-    cidade: "Linhares",
-    bg: "bg-canopy",
-    texto: "text-shade",
-    acento: "bg-forest",
-  },
-  {
-    inicial: "SM",
-    nome: "EMEF",
-    cidade: "São Mateus",
-    bg: "bg-rose",
-    texto: "text-marble",
-    acento: "bg-chartreuse",
-  },
-  {
-    inicial: "CL",
-    nome: "EEEFM",
-    cidade: "Colatina",
-    bg: "bg-sky",
-    texto: "text-shade",
-    acento: "bg-iris",
-  },
-];
-
-const ESCOLAS_MARQUEE = [
-  "EEEFM Vila Velha",
-  "EMEF Cariacica",
-  "EEEFM Serra",
-  "EEEFM Vitória",
-  "EMEF Cachoeiro de Itapemirim",
-  "EEEFM Linhares",
-  "EMEF São Mateus",
-  "EEEFM Colatina",
-  "EMEF Aracruz",
-  "EEEFM Guarapari",
-  "EMEF Domingos Martins",
-  "EEEFM Marataízes",
-  "EMEF Anchieta",
-  "EEEFM Castelo",
-  "EMEF Viana",
-];
+const formatarInteiro = (n: number) => Math.round(n).toLocaleString("pt-BR");
 
 export function MarqueeEscolas() {
-  const itensMarquee = [...ESCOLAS_MARQUEE, ...ESCOLAS_MARQUEE];
+  const { data } = useLandingPublica();
+  const metricas = data?.metricas;
+  const escolas = data?.escolas ?? [];
+  const tiles = escolas.slice(0, 8).map((escola, indice) => ({
+    ...escola,
+    estilo: ESTILOS_TILE[indice % ESTILOS_TILE.length],
+  }));
+  const nomesMarquee = escolas.map((e) => `${e.nome} · ${e.municipio}`);
+  const itensMarquee = [...nomesMarquee, ...nomesMarquee];
+
+  const stats = [
+    {
+      icone: Building2,
+      valorFinal: metricas?.totalEscolas ?? 0,
+      rotulo: "Escolas",
+      cor: "text-chartreuse",
+    },
+    {
+      icone: MapPin,
+      valorFinal: metricas?.totalMunicipios ?? 0,
+      rotulo: "Municipios",
+      cor: "text-poppy",
+    },
+    {
+      icone: Users,
+      valorFinal: metricas?.totalAlunos ?? 0,
+      rotulo: "Alunos",
+      cor: "text-orchid",
+    },
+    {
+      icone: Award,
+      valorFinal: metricas?.anoReferencia ?? new Date().getFullYear(),
+      rotulo: "Em producao",
+      cor: "text-sky",
+    },
+  ];
 
   return (
     <section
-      className="bg-marble"
+      className="bg-marble transition-colors dark:bg-shade"
       data-slot="trusted-by-tiles"
       aria-labelledby="trusted-titulo"
     >
@@ -143,71 +97,66 @@ export function MarqueeEscolas() {
           </p>
           <h2
             id="trusted-titulo"
-            className="mt-4 font-sans text-shade font-display-bold"
-            style={{               fontSize: "clamp(2.25rem, 5vw, 3.75rem)",
+            className="mt-4 font-sans text-shade font-display-bold dark:text-marble"
+            style={{
+              fontSize: "clamp(2.25rem, 5vw, 3.75rem)",
               lineHeight: "1.06",
-              letterSpacing: "-0.02em",
+              letterSpacing: "0",
               animation: "materialize 0.6s var(--ease-quart) 150ms backwards",
             }}
           >
-            <span className="text-rose">Quarenta e sete</span> escolas
-            estaduais.
+            <span className="text-rose">
+              {formatarInteiro(metricas?.totalEscolas ?? 0)}
+            </span>{" "}
+            escolas estaduais.
           </h2>
           <p
-            className="mt-5 max-w-xl text-shade/75 md:text-[17px]"
+            className="mt-5 max-w-xl text-shade/75 dark:text-marble/75 md:text-[17px]"
             style={{
               animation: "materialize 0.6s var(--ease-quart) 300ms backwards",
             }}
           >
-            Da capital às cidades do interior do Espírito Santo. Cada escola
-            com sua coordenação pedagógica conectada ao mesmo banco de
-            questões.
+            Dados carregados do banco da aplicação: escolas, turmas e alunos
+            conectados ao mesmo banco de questões.
           </p>
         </header>
 
-        {/* tiles trusted-by — cada tile uma cor diferente, layout estilo Linktree */}
         <ul className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-          {TILES_PRINCIPAIS.map((t, i) => (
-            <li key={i}>
+          {tiles.map((t, i) => (
+            <li key={t.id}>
               <article
-                className={`group relative flex aspect-square flex-col justify-between overflow-hidden rounded-[28px] p-6 transition-transform duration-300 hover:-translate-y-1 hover:rotate-1 md:p-7 ${t.bg} ${t.texto}`}
+                className={`group relative flex aspect-square flex-col justify-between overflow-hidden rounded-[28px] p-6 transition-transform duration-300 hover:-translate-y-1 hover:rotate-1 md:p-7 ${t.estilo.bg} ${t.estilo.texto}`}
                 style={{
                   animation: `slide-in-card 0.7s var(--ease-quint) ${i * 80}ms backwards`,
                 }}
               >
-                {/* iniciais grandes ao centro */}
                 <p
                   className="font-sans"
                   style={{
                     fontSize: "clamp(2rem, 3.5vw, 3rem)",
                     lineHeight: "1",
-                    
-                    letterSpacing: "-0.04em",
+                    letterSpacing: "0",
                   }}
                 >
                   {t.inicial}
                 </p>
-
-                {/* badge canto sup direito */}
                 <span
-                  className={`absolute top-5 right-5 size-2.5 rounded-full ${t.acento}`}
+                  className={`absolute top-5 right-5 size-2.5 rounded-full ${t.estilo.acento}`}
                   aria-hidden
                 />
-
                 <div>
                   <p className="font-mono text-[10px] font-bold uppercase tracking-widest opacity-70">
-                    {t.nome}
+                    {t.totalTurmas} turmas
                   </p>
                   <p
                     className="mt-1.5 font-sans"
                     style={{
                       fontSize: "0.95rem",
                       lineHeight: "1.15",
-                      
-                      letterSpacing: "-0.01em",
+                      letterSpacing: "0",
                     }}
                   >
-                    {t.cidade}
+                    {t.municipio}
                   </p>
                 </div>
               </article>
@@ -215,102 +164,69 @@ export function MarqueeEscolas() {
           ))}
         </ul>
 
-        {/* stats row */}
         <div
           className="mt-12 grid grid-cols-2 gap-3 rounded-[24px] bg-shade p-6 md:mt-16 md:grid-cols-4 md:p-8"
           style={{
             animation: "slide-in-card 0.8s var(--ease-quint) 700ms backwards",
           }}
         >
-          {[
-            {
-              icone: Building2,
-              valor: "47",
-              valorFinal: 47,
-              formatador: (n: number) => Math.round(n).toString(),
-              rotulo: "Escolas",
-              cor: "text-chartreuse",
-            },
-            {
-              icone: MapPin,
-              valor: "78",
-              valorFinal: 78,
-              formatador: (n: number) => Math.round(n).toString(),
-              rotulo: "Municípios",
-              cor: "text-poppy",
-            },
-            {
-              icone: Users,
-              valor: "12.420",
-              valorFinal: 12420,
-              rotulo: "Alunos",
-              cor: "text-orchid",
-            },
-            {
-              icone: Award,
-              valor: "2026",
-              rotulo: "Em produção",
-              cor: "text-sky",
-            },
-          ].map((s) => (
-            <div key={s.rotulo} className="flex items-center gap-4">
-              <span className={`shrink-0 ${s.cor}`} aria-hidden>
-                <s.icone className="size-7" />
-              </span>
-              <div>
-                <div
-                  className="font-sans text-marble tabular-nums"
-                  style={{
-                    fontSize: "1.625rem",
-                    lineHeight: "1",
-                    
-                    letterSpacing: "-0.03em",
-                  }}
-                >
-                  {s.valorFinal !== undefined ? (
+          {stats.map((s) => {
+            const Icone = s.icone;
+            return (
+              <div key={s.rotulo} className="flex items-center gap-4">
+                <span className={`shrink-0 ${s.cor}`} aria-hidden>
+                  <Icone className="size-7" />
+                </span>
+                <div>
+                  <div
+                    className="font-sans text-marble tabular-nums"
+                    style={{
+                      fontSize: "1.625rem",
+                      lineHeight: "1",
+                      letterSpacing: "0",
+                    }}
+                  >
                     <NumeroAnimado
                       valorFinal={s.valorFinal}
-                      formatador={s.formatador}
+                      formatador={formatarInteiro}
                     />
-                  ) : (
-                    s.valor
-                  )}
+                  </div>
+                  <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-widest text-marble/60">
+                    {s.rotulo}
+                  </p>
                 </div>
-                <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-widest text-marble/60">
-                  {s.rotulo}
-                </p>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* marquee horizontal — escolas em loop */}
-      <div className="relative mt-16 overflow-hidden border-y-2 border-shade bg-chartreuse py-6 md:mt-20">
-        <ul
-          className="flex gap-10 whitespace-nowrap"
-          style={{
-            animation: "marquee-scroll 38s linear infinite",
-            width: "max-content",
-          }}
-        >
-          {itensMarquee.map((escola, i) => (
-            <li
-              key={`${escola}-${i}`}
-              className="flex items-center gap-3 font-sans"
-              style={{
-                fontSize: "1.5rem",
-                
-                letterSpacing: "-0.02em",
-                color: "var(--color-shade)",
-              }}
-            >
-              {escola}
-              <span className="size-2 rounded-full bg-shade" aria-hidden />
-            </li>
-          ))}
-        </ul>
-      </div>
+      {itensMarquee.length > 0 && (
+        <div className="relative mt-16 overflow-hidden border-y-2 border-shade bg-chartreuse py-6 md:mt-20">
+          <ul
+            className="flex gap-10 whitespace-nowrap"
+            style={{
+              animation: "marquee-scroll 38s linear infinite",
+              width: "max-content",
+            }}
+          >
+            {itensMarquee.map((escola, i) => (
+              <li
+                key={`${escola}-${i}`}
+                className="flex items-center gap-3 font-sans"
+                style={{
+                  fontSize: "1.5rem",
+                  letterSpacing: "0",
+                  color: "var(--color-shade)",
+                }}
+              >
+                {escola}
+                <span className="size-2 rounded-full bg-shade" aria-hidden />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <style>{`
         @keyframes marquee-scroll {

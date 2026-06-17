@@ -55,14 +55,18 @@ import type { PerfilUsuario } from "@/types";
 const PERFIS: { valor: PerfilUsuario; rotulo: string }[] = [
   { valor: "admin", rotulo: "Admin" },
   { valor: "gestor", rotulo: "Gestor" },
+  { valor: "professor", rotulo: "Professor" },
   { valor: "aluno", rotulo: "Aluno" },
+  { valor: "candidato", rotulo: "Candidato" },
   { valor: "suporte", rotulo: "Suporte" },
 ];
 
 const TOM_PERFIL: Record<PerfilUsuario, string> = {
   admin: "bg-primary-muted text-primary-text",
   gestor: "bg-ia-muted text-ia",
+  professor: "bg-muted text-foreground",
   aluno: "bg-success-muted text-success",
+  candidato: "bg-success-muted text-success",
   suporte: "bg-warning-muted text-warning",
 };
 
@@ -71,7 +75,7 @@ const POR_PAGINA = 20;
 const esquemaUsuario = z.object({
   nome: z.string().min(2, "Mínimo 2 caracteres"),
   email: z.email("Email inválido"),
-  perfil: z.enum(["admin", "gestor", "aluno", "suporte"]),
+  perfil: z.enum(["admin", "gestor", "professor", "aluno", "candidato", "suporte"]),
   escolaId: z.string().min(1, "Selecione uma escola"),
 });
 

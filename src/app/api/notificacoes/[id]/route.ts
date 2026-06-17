@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { mockNotificacoes } from "@/lib/mocks";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import { mapNotificacao, type NotificacaoBackend } from "@/lib/backend-maps";
 
 interface ContextoRota {
   params: Promise<{ id: string }>;
@@ -9,15 +10,8 @@ export async function PATCH(
   request: Request,
   contexto: ContextoRota,
 ): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 100 + Math.random() * 200));
+  const token = tokenDaRequisicao(request);
   const { id } = await contexto.params;
-  const notif = mockNotificacoes.find((n) => n.id === id);
-  if (!notif) {
-    return NextResponse.json(
-      { codigo: "NAO_ENCONTRADO", mensagem: "Notificação não encontrada." },
-      { status: 404 },
-    );
-  }
 
   let patch: { lida?: boolean } = {};
   try {
@@ -26,9 +20,20 @@ export async function PATCH(
     /* corpo vazio = marcar como lida */
   }
 
-  const novoEstado = patch.lida ?? true;
-  notif.lida = novoEstado;
-  notif.lidaEm = novoEstado ? new Date().toISOString() : undefined;
-
-  return NextResponse.json(notif);
+  try {
+    const py = await backendFetch<NotificacaoBackend>(`/notificacoes/${id}`, {
+      method: "PATCH",
+      token,
+      body: { lida: patch.lida ?? true },
+    });
+    return NextResponse.json(mapNotificacao(py));
+  } catch (erro) {
+    if (erro instanceof ErroBackend) {
+      return NextResponse.json(erro.corpo, { status: erro.status });
+    }
+    return NextResponse.json(
+      { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+      { status: 500 },
+    );
+  }
 }

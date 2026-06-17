@@ -7,21 +7,27 @@ const ROTAS_COMPARTILHADAS = ["/perfil", "/notificacoes", "/configuracoes"];
 const PREFIXO_POR_PERFIL: Record<PerfilUsuario, string> = {
   admin: "/admin",
   gestor: "/gestor",
+  professor: "/professor",
   aluno: "/aluno",
+  candidato: "/aluno",
   suporte: "/suporte",
 };
 
 const HOME_POR_PERFIL: Record<PerfilUsuario, string> = {
   admin: "/admin/dashboard",
   gestor: "/gestor/dashboard",
+  professor: "/professor/dashboard",
   aluno: "/aluno/home",
+  candidato: "/aluno/home",
   suporte: "/suporte/dashboard",
 };
 
 const PERFIS_VALIDOS = new Set<PerfilUsuario>([
   "admin",
   "gestor",
+  "professor",
   "aluno",
+  "candidato",
   "suporte",
 ]);
 
@@ -99,7 +105,8 @@ export function proxy(request: NextRequest): NextResponse {
   const prefixo = prefixoDaRota(pathname);
   if (prefixo !== null) {
     const perfilDono = perfilDoPrefixo(prefixo);
-    if (perfilDono !== perfil) {
+    const candidatoNaAreaAluno = perfil === "candidato" && prefixo === "/aluno";
+    if (perfilDono !== perfil && !candidatoNaAreaAluno) {
       return NextResponse.redirect(
         new URL(HOME_POR_PERFIL[perfil], request.url),
       );
@@ -114,6 +121,6 @@ export function proxy(request: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|mockServiceWorker.js).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 };

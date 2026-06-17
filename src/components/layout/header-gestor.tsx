@@ -12,12 +12,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { gerarIniciais } from "@/lib/utils";
-import { useAuth } from "@/hooks/use-auth";
 import { ToggleTema } from "@/components/layout/toggle-tema";
+import { useAuth } from "@/hooks/use-auth";
+import { ROTULO_CURTO_PERFIL } from "@/lib/permissoes";
+import { gerarIniciais } from "@/lib/utils";
 
 export function HeaderGestor() {
   const { usuario, logout } = useAuth();
+  const rotuloPerfil = usuario
+    ? ROTULO_CURTO_PERFIL[usuario.perfil] ?? usuario.perfil
+    : "Usuário";
 
   return (
     <header
@@ -78,7 +82,7 @@ export function HeaderGestor() {
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-medium">{usuario.nome}</span>
                     <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Coordenação pedagógica
+                      {rotuloPerfil}
                     </span>
                   </div>
                 </DropdownMenuLabel>

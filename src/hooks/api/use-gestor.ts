@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { atualizar, criar, obter } from "@/lib/api";
+import { criar, obter } from "@/lib/api";
 import type {
   AdaptacaoCognitiva,
   CuradoriaIA,
@@ -131,6 +131,25 @@ export function useLiberarSimulado() {
   });
 }
 
+// Construtor manual: define a lista exata de questões da prova (por id).
+export function useMontarProva() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { simuladoId: string; questaoIds: string[] }) =>
+      criar<{
+        id: string;
+        status: string;
+        totalQuestoes: number;
+        questaoIds: string[];
+      }>(`/gestor/simulados/${vars.simuladoId}/montar`, {
+        questaoIds: vars.questaoIds,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["gestor", "simulados"] });
+    },
+  });
+}
+
 // ============================================================
 // Acompanhamento ao vivo
 // ============================================================
@@ -249,6 +268,7 @@ export interface AlertaRisco {
   ultimaAtualizacao: string;
   ultimaNota: number;
   competenciasFracas: string[];
+  historicoNotas?: { rodada: number; nota: number }[];
 }
 
 export interface RespostaAlertas {

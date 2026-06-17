@@ -5,7 +5,6 @@ import { ThemeProvider } from "next-themes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { IniciadorMSW } from "./iniciador-msw";
 
 interface ProvedoresAppProps {
   children: ReactNode;
@@ -34,11 +33,9 @@ export function ProvedoresApp({ children }: ProvedoresAppProps) {
       disableTransitionOnChange
     >
       <QueryClientProvider client={clienteQuery}>
-        <IniciadorMSW>
-          <TooltipProvider delayDuration={300} skipDelayDuration={150}>
-            {children}
-          </TooltipProvider>
-        </IniciadorMSW>
+        <TooltipProvider delayDuration={300} skipDelayDuration={150}>
+          {children}
+        </TooltipProvider>
         <Toaster
           position="top-right"
           theme="system"

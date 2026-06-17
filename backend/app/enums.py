@@ -10,6 +10,7 @@ import enum
 class PerfilUsuario(enum.Enum):
     ADMIN = "admin"            # Secretaria — gerencia o banco de questões
     GESTOR = "gestor"          # Diretor/coordenador — cria e aplica simulados
+    PROFESSOR = "professor"    # Professor — cria questões e monta provas (sem apagar do banco)
     ALUNO = "aluno"            # Aluno com vínculo escolar — responde simulados
     CANDIDATO = "candidato"    # Sem vínculo escolar — supletivo, inscreve em etapas
     SUPORTE = "suporte"        # Professor/secretário — acompanha alunos
@@ -20,6 +21,14 @@ class StatusSimulado(enum.Enum):
     GERADO = "gerado"            # questões selecionadas, aguardando liberação
     LIBERADO = "liberado"        # alunos já podem responder
     FINALIZADO = "finalizado"    # encerrado; notas calculadas
+
+
+class StatusQuestao(enum.Enum):
+    """Ciclo de vida de uma questão no banco (gerenciado pelo Admin)."""
+
+    RASCUNHO = "rascunho"        # criada, ainda não disponível
+    PUBLICADA = "publicada"      # disponível para uso em simulados
+    ARQUIVADA = "arquivada"      # retirada de circulação
 
 
 class VinculoAluno(enum.Enum):

@@ -1,4 +1,3 @@
-import { ForcarTemaClaro } from "@/components/landing/forcar-tema-claro";
 import { HeaderLanding } from "@/components/landing/header-landing";
 import { HeroLanding } from "@/components/landing/hero-landing";
 import { ManifestoBlock } from "@/components/landing/manifesto-block";
@@ -12,10 +11,9 @@ import { FooterLanding } from "@/components/landing/footer-landing";
 
 export default function PaginaLanding() {
   return (
-    <div className="textura-grain bg-marble text-shade">
-      <ForcarTemaClaro />
+    <div className="textura-grain bg-marble text-shade transition-colors dark:bg-shade dark:text-marble">
       <HeaderLanding />
-      <main className="bg-marble">
+      <main className="bg-marble transition-colors dark:bg-shade">
         <HeroLanding />
         <ManifestoBlock />
         <SecaoComoFunciona />

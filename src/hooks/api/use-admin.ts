@@ -94,7 +94,7 @@ export function useAdminQuestoes(filtros?: FiltrosQuestao) {
   return useQuery({
     queryKey: ["admin", "questoes", filtros],
     queryFn: () =>
-      obter<RespostaQuestoesPaginada>(`/admin/questoes${qs ? `?${qs}` : ""}`),
+      obter<RespostaQuestoesPaginada>(`/questoes${qs ? `?${qs}` : ""}`),
     staleTime: 15_000,
   });
 }
@@ -102,7 +102,7 @@ export function useAdminQuestoes(filtros?: FiltrosQuestao) {
 export function useAdminQuestao(id: string | undefined) {
   return useQuery({
     queryKey: ["admin", "questao", id],
-    queryFn: () => obter<Questao>(`/admin/questoes/${id}`),
+    queryFn: () => obter<Questao>(`/questoes/${id}`),
     enabled: Boolean(id),
   });
 }
@@ -111,7 +111,7 @@ export function useAtualizarQuestao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { id: string; dados: Partial<Questao> }) =>
-      atualizar<Questao>(`/admin/questoes/${vars.id}`, vars.dados),
+      atualizar<Questao>(`/questoes/${vars.id}`, vars.dados),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
       qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
@@ -124,7 +124,7 @@ export function useCriarQuestao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (dados: Partial<Questao>) =>
-      criar<Questao>("/admin/questoes", dados),
+      criar<Questao>("/questoes", dados),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
       qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
@@ -136,7 +136,7 @@ export function useRemoverQuestao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      remover<{ id: string }>(`/admin/questoes/${id}`),
+      remover<{ id: string }>(`/questoes/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
       qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });

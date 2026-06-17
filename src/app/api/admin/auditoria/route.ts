@@ -1,53 +1,49 @@
 import { NextResponse } from "next/server";
-import { mockAuditoria, mockUsuarios } from "@/lib/mocks";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import { mapAuditoria, type AuditoriaBackend } from "@/lib/backend-maps";
+
+interface ListaBackend {
+  total: number;
+  pagina: number;
+  por_pagina: number;
+  dados: AuditoriaBackend[];
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
+  const token = tokenDaRequisicao(request);
   const url = new URL(request.url);
-  const tipo = url.searchParams.getAll("tipo");
+  const pagina = url.searchParams.get("pagina") ?? "1";
+  const porPagina = url.searchParams.get("porPagina") ?? "30";
   const usuarioId = url.searchParams.get("usuarioId");
-  const desde = url.searchParams.get("desde");
-  const ate = url.searchParams.get("ate");
-  const pagina = parseInt(url.searchParams.get("pagina") ?? "1", 10);
-  const porPagina = parseInt(url.searchParams.get("porPagina") ?? "30", 10);
 
-  let lista = [...mockAuditoria].sort(
-    (a, b) =>
-      new Date(b.ocorridoEm).getTime() - new Date(a.ocorridoEm).getTime(),
-  );
-
-  if (tipo.length) lista = lista.filter((a) => tipo.includes(a.tipo));
-  if (usuarioId) lista = lista.filter((a) => a.usuarioId === usuarioId);
-  if (desde) {
-    const t = new Date(desde).getTime();
-    lista = lista.filter((a) => new Date(a.ocorridoEm).getTime() >= t);
+  try {
+    const resp = await backendFetch<ListaBackend>("/auditoria", {
+      token,
+      query: {
+        tipo: url.searchParams.getAll("tipo"),
+        // backend filtra por id int; só repassa se for numérico
+        usuario_id: usuarioId && /^\d+$/.test(usuarioId) ? usuarioId : undefined,
+        pagina,
+        por_pagina: porPagina,
+      },
+    });
+    const porPaginaNum = parseInt(porPagina, 10) || 30;
+    return NextResponse.json({
+      dados: resp.dados.map(mapAuditoria),
+      meta: {
+        pagina: parseInt(pagina, 10) || 1,
+        porPagina: porPaginaNum,
+        total: resp.total,
+        totalPaginas: Math.max(1, Math.ceil(resp.total / porPaginaNum)),
+      },
+    });
+  } catch (erro) {
+    if (erro instanceof ErroBackend) {
+      return NextResponse.json(erro.corpo, { status: erro.status });
+    }
+    return NextResponse.json(
+      { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+      { status: 500 },
+    );
   }
-  if (ate) {
-    const t = new Date(ate).getTime();
-    lista = lista.filter((a) => new Date(a.ocorridoEm).getTime() <= t);
-  }
-
-  const enriquecidas = lista.map((a) => {
-    const usuario = mockUsuarios.find((u) => u.id === a.usuarioId);
-    return {
-      ...a,
-      usuario: usuario
-        ? { id: usuario.id, nome: usuario.nome, fotoUrl: usuario.fotoUrl }
-        : null,
-    };
-  });
-
-  const total = enriquecidas.length;
-  const inicio = (pagina - 1) * porPagina;
-  const dados = enriquecidas.slice(inicio, inicio + porPagina);
-
-  return NextResponse.json({
-    dados,
-    meta: {
-      pagina,
-      porPagina,
-      total,
-      totalPaginas: Math.ceil(total / porPagina),
-    },
-  });
 }

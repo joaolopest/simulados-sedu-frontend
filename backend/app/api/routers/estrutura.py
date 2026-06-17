@@ -11,14 +11,17 @@ Cobre o item "Visualizar alunos e turmas" 🔴 do quadro detalhado:
     GET /alunos/{id}                   detalhe expandido (cadastro completo + responsáveis)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
 from app.enums import VinculoAluno
-from app.models import Aluno, Escola, Turma
+from app.models import Aluno, Escola, Turma, Usuario
+from app.services import auditoria_service
 
-from app.api.permissoes import admin_gestor_suporte
+from app.api.permissoes import admin_gestor_suporte, so_admin
 
 router = APIRouter(
     prefix="/estrutura",
@@ -36,7 +39,17 @@ def _serializar_escola(e: Escola) -> dict:
         "nome": e.nome,
         "municipio": e.municipio,
         "codigo_inep": e.codigo_inep,
+        "uf": e.uf,
+        "endereco": e.endereco,
+        "cep": e.cep,
+        "telefone": e.telefone,
+        "email_contato": e.email_contato,
+        "ativa": e.ativa,
+        "total_professores": e.total_professores,
+        "criada_em": e.criada_em.isoformat() if e.criada_em else None,
+        "atualizada_em": e.atualizada_em.isoformat() if e.atualizada_em else None,
         "total_turmas": len(e.turmas),
+        "total_alunos": sum(len(t.alunos) for t in e.turmas),
     }
 
 
@@ -138,6 +151,96 @@ def detalhar_escola(escola_id: int, sessao: Session = Depends(get_session)) -> d
     dados = _serializar_escola(escola)
     dados["turmas"] = [_serializar_turma(t) for t in escola.turmas]
     return dados
+
+
+class EscolaCriar(BaseModel):
+    nome: str
+    municipio: str | None = None
+    codigo_inep: str | None = None
+    uf: str | None = None
+    endereco: str | None = None
+    cep: str | None = None
+    telefone: str | None = None
+    email_contato: str | None = None
+
+
+@router.post("/escolas", status_code=201, dependencies=[Depends(so_admin)])
+def criar_escola(
+    req: EscolaCriar,
+    request: Request,
+    usuario: Usuario = Depends(so_admin),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    if req.codigo_inep:
+        existe = (
+            sessao.query(Escola).filter(Escola.codigo_inep == req.codigo_inep).first()
+        )
+        if existe is not None:
+            raise HTTPException(
+                status_code=409, detail="Já existe uma escola com este código INEP."
+            )
+    escola = Escola(
+        nome=req.nome,
+        municipio=req.municipio,
+        codigo_inep=req.codigo_inep,
+        uf=req.uf,
+        endereco=req.endereco,
+        cep=req.cep,
+        telefone=req.telefone,
+        email_contato=req.email_contato,
+    )
+    sessao.add(escola)
+    sessao.flush()
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="criar_escola",
+        alvo_tipo="escola",
+        alvo_id=escola.id,
+        detalhes=f"Cadastrou escola {escola.nome} (INEP {escola.codigo_inep or '-'})",
+        request=request,
+    )
+    sessao.commit()
+    sessao.refresh(escola)
+    return _serializar_escola(escola)
+
+
+@router.delete("/escolas/{escola_id}", dependencies=[Depends(so_admin)])
+def remover_escola(
+    escola_id: int,
+    request: Request,
+    usuario: Usuario = Depends(so_admin),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    escola = sessao.get(Escola, escola_id)
+    if not escola:
+        raise HTTPException(status_code=404, detail="Escola não encontrada.")
+    n_turmas = sessao.query(Turma).filter(Turma.escola_id == escola_id).count()
+    if n_turmas > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Esta escola tem {n_turmas} turma(s) vinculada(s). Remova as turmas antes de excluir.",
+        )
+    try:
+        nome = escola.nome
+        sessao.delete(escola)
+        auditoria_service.registrar(
+            sessao,
+            usuario=usuario,
+            tipo="remover_escola",
+            alvo_tipo="escola",
+            alvo_id=escola_id,
+            detalhes=f"Excluiu a escola {nome} #{escola_id}",
+            request=request,
+        )
+        sessao.commit()
+    except IntegrityError:
+        sessao.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Escola possui vínculos e não pode ser excluída.",
+        )
+    return {"id": escola_id, "removida": True}
 
 
 # ---------- TURMAS ----------

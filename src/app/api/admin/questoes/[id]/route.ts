@@ -1,90 +1,105 @@
-import { NextResponse } from "next/server";
-import { mockQuestoes } from "@/lib/mocks";
-import { registrarAuditoria } from "@/lib/auditoria";
-import type { Questao } from "@/types";
+﻿import { NextResponse } from "next/server";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import {
+  mapQuestao,
+  materiaParaNome,
+  nivelParaNome,
+  serieParaNome,
+  type QuestaoBackend,
+} from "@/lib/backend-maps";
+
+interface CorpoQuestao {
+  enunciado?: string;
+  serie?: string;
+  materia?: string;
+  conteudo?: string;
+  nivel?: string;
+  adaptacoes?: string[];
+  competencias?: string[];
+  explicacao?: string | null;
+  tempoEstimadoSegundos?: number;
+  status?: string;
+  imagemUrl?: string | null;
+}
+
+function respostaErro(erro: unknown): NextResponse {
+  if (erro instanceof ErroBackend) {
+    return NextResponse.json(erro.corpo, { status: erro.status });
+  }
+  return NextResponse.json(
+    { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+    { status: 500 },
+  );
+}
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const token = tokenDaRequisicao(request);
   const { id } = await params;
-  await new Promise((r) => setTimeout(r, 100 + Math.random() * 200));
-  const questao = mockQuestoes.find((q) => q.id === id);
-  if (!questao) {
-    return NextResponse.json(
-      { codigo: "NAO_ENCONTRADO", mensagem: "Questão não encontrada." },
-      { status: 404 },
-    );
+  try {
+    const py = await backendFetch<QuestaoBackend>(`/questoes/${id}`, { token });
+    return NextResponse.json(mapQuestao(py));
+  } catch (erro) {
+    return respostaErro(erro);
   }
-  return NextResponse.json(questao);
 }
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const token = tokenDaRequisicao(request);
   const { id } = await params;
-  await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
-  const body = (await request.json()) as Partial<Questao>;
-  const existente = mockQuestoes.find((q) => q.id === id);
-  if (!existente) {
+
+  let body: CorpoQuestao;
+  try {
+    body = (await request.json()) as CorpoQuestao;
+  } catch {
     return NextResponse.json(
-      { codigo: "NAO_ENCONTRADO", mensagem: "Questão não encontrada." },
-      { status: 404 },
+      { codigo: "CORPO_INVALIDO", mensagem: "Corpo invÃ¡lido." },
+      { status: 400 },
     );
   }
-  // muta in-place pra persistir entre requisições
-  const statusAntes = existente.status;
-  Object.assign(existente, body, {
-    id: existente.id,
-    atualizadoEm: new Date().toISOString(),
-    versao: existente.versao + 1,
-  });
 
-  if (body.status && body.status !== statusAntes) {
-    registrarAuditoria({
-      tipo: body.status === "publicada" ? "publicar_questao" : "editar_questao",
-      usuarioId: "usu_001",
-      usuarioNome: "Renata Albuquerque Cardoso",
-      alvoTipo: "questao",
-      alvoId: existente.id,
-      detalhes: `Alterou status para ${body.status}`,
+  const payload: Record<string, unknown> = {};
+  if (body.enunciado !== undefined) payload.enunciado = body.enunciado;
+  if (body.serie !== undefined) payload.serie = serieParaNome(body.serie);
+  if (body.materia !== undefined) payload.materia = materiaParaNome(body.materia);
+  if (body.nivel !== undefined) payload.nivel = nivelParaNome(body.nivel);
+  if (body.conteudo !== undefined) payload.conteudo = body.conteudo;
+  if (body.adaptacoes !== undefined) payload.adaptacoes = body.adaptacoes;
+  if (body.competencias !== undefined) payload.competencias = body.competencias;
+  if (body.explicacao !== undefined) payload.explicacao = body.explicacao;
+  if (body.tempoEstimadoSegundos !== undefined)
+    payload.tempo_estimado_segundos = body.tempoEstimadoSegundos;
+  if (body.status !== undefined) payload.status = body.status;
+  if (body.imagemUrl !== undefined) payload.imagem_url = body.imagemUrl;
+
+  try {
+    const py = await backendFetch<QuestaoBackend>(`/questoes/${id}`, {
+      method: "PATCH",
+      token,
+      body: payload,
     });
-  } else {
-    registrarAuditoria({
-      tipo: "editar_questao",
-      usuarioId: "usu_001",
-      usuarioNome: "Renata Albuquerque Cardoso",
-      alvoTipo: "questao",
-      alvoId: existente.id,
-      detalhes: `Editou questão de ${existente.materia}`,
-    });
+    const atualizada = mapQuestao(py);
+    return NextResponse.json(atualizada);
+  } catch (erro) {
+    return respostaErro(erro);
   }
-
-  return NextResponse.json(existente);
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const token = tokenDaRequisicao(request);
   const { id } = await params;
-  await new Promise((r) => setTimeout(r, 150 + Math.random() * 200));
-  const indice = mockQuestoes.findIndex((q) => q.id === id);
-  if (indice < 0) {
-    return NextResponse.json(
-      { codigo: "NAO_ENCONTRADO", mensagem: "Questão não encontrada." },
-      { status: 404 },
-    );
+  try {
+    await backendFetch(`/questoes/${id}`, { method: "DELETE", token });
+    return NextResponse.json({ id, deletada: true });
+  } catch (erro) {
+    return respostaErro(erro);
   }
-  const removida = mockQuestoes.splice(indice, 1)[0];
-  registrarAuditoria({
-    tipo: "editar_questao",
-    usuarioId: "usu_001",
-    usuarioNome: "Renata Albuquerque Cardoso",
-    alvoTipo: "questao",
-    alvoId: id,
-    detalhes: `Removeu questão de ${removida.materia} (${removida.nivel})`,
-  });
-  return NextResponse.json({ id, deletada: true });
 }

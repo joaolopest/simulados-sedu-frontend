@@ -42,3 +42,15 @@ def criar_token(usuario_id: int, perfil: str) -> str:
 
 def decodificar_token(token: str) -> dict:
     return jwt.decode(token, CHAVE_SECRETA, algorithms=[ALGORITMO])
+
+
+def criar_token_reset(usuario_id: int, horas: int = 1) -> str:
+    """Token curto pra redefinição de senha (claim tipo='reset')."""
+    agora = int(time.time())
+    payload = {
+        "sub": str(usuario_id),
+        "tipo": "reset",
+        "iat": agora,
+        "exp": agora + horas * 3600,
+    }
+    return jwt.encode(payload, CHAVE_SECRETA, algorithm=ALGORITMO)

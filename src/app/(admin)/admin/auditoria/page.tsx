@@ -44,7 +44,14 @@ interface ConfigTipo {
   tom: "primary" | "ia" | "success" | "warning" | "muted";
 }
 
-const CONFIG_TIPOS: Record<TipoAcao, ConfigTipo> = {
+const CONFIG_TIPO_DESCONHECIDO: ConfigTipo = {
+  rotulo: "Ação",
+  verbo: "registrou uma ação",
+  icone: FileText,
+  tom: "muted",
+};
+
+const CONFIG_TIPOS: Partial<Record<TipoAcao, ConfigTipo>> = {
   login: { rotulo: "Login", verbo: "fez login", icone: LogIn, tom: "muted" },
   logout: { rotulo: "Logout", verbo: "saiu da plataforma", icone: LogOut, tom: "muted" },
   criar_questao: { rotulo: "Criar questão", verbo: "criou uma questão", icone: FilePlus2, tom: "primary" },
@@ -59,6 +66,21 @@ const CONFIG_TIPOS: Record<TipoAcao, ConfigTipo> = {
   criar_escola: { rotulo: "Criar escola", verbo: "cadastrou uma escola", icone: Building2, tom: "ia" },
   editar_escola: { rotulo: "Editar escola", verbo: "editou uma escola", icone: Building2, tom: "ia" },
   remover_escola: { rotulo: "Excluir escola", verbo: "excluiu uma escola", icone: Trash2, tom: "ia" },
+  remover_questao: { rotulo: "Remover questão", verbo: "removeu uma questão", icone: Trash2, tom: "primary" },
+  arquivar_questao: { rotulo: "Arquivar questão", verbo: "arquivou uma questão", icone: FileText, tom: "primary" },
+  solicitacao_revisao: { rotulo: "Solicitar revisão", verbo: "solicitou revisão", icone: FileEdit, tom: "warning" },
+  resolucao_revisao: { rotulo: "Resolver revisão", verbo: "resolveu revisão", icone: FileText, tom: "success" },
+  importacao: { rotulo: "Importação", verbo: "importou questões", icone: Upload, tom: "ia" },
+  gerar_simulado: { rotulo: "Gerar simulado", verbo: "gerou um simulado", icone: Sparkles, tom: "success" },
+  montar_simulado: { rotulo: "Montar simulado", verbo: "montou um simulado", icone: FileText, tom: "success" },
+  editar_simulado: { rotulo: "Editar simulado", verbo: "editou um simulado", icone: FileEdit, tom: "success" },
+  finalizar_simulado: { rotulo: "Finalizar simulado", verbo: "finalizou um simulado", icone: FileText, tom: "success" },
+  criar_aluno: { rotulo: "Criar aluno", verbo: "cadastrou um aluno", icone: UserPlus, tom: "warning" },
+  inscrever_aluno_simulado: { rotulo: "Inscrever aluno", verbo: "inscreveu aluno em simulado", icone: UserCog, tom: "success" },
+  responder_questao: { rotulo: "Responder questão", verbo: "respondeu uma questão", icone: FileEdit, tom: "primary" },
+  finalizar_respostas: { rotulo: "Finalizar respostas", verbo: "finalizou respostas", icone: FileText, tom: "success" },
+  registrar_nota_suporte: { rotulo: "Nota de suporte", verbo: "registrou nota de suporte", icone: FileText, tom: "warning" },
+  solicitar_apoio_presencial: { rotulo: "Apoio presencial", verbo: "solicitou apoio presencial", icone: Send, tom: "warning" },
 };
 
 const TIPOS_ORDEM: TipoAcao[] = [
@@ -67,15 +89,28 @@ const TIPOS_ORDEM: TipoAcao[] = [
   "criar_questao",
   "editar_questao",
   "publicar_questao",
+  "arquivar_questao",
+  "solicitacao_revisao",
+  "resolucao_revisao",
+  "importacao",
   "importar_questoes",
   "criar_simulado",
+  "gerar_simulado",
+  "montar_simulado",
   "liberar_simulado",
+  "finalizar_simulado",
   "criar_usuario",
   "editar_usuario",
   "remover_usuario",
   "criar_escola",
   "editar_escola",
   "remover_escola",
+  "criar_aluno",
+  "inscrever_aluno_simulado",
+  "responder_questao",
+  "finalizar_respostas",
+  "registrar_nota_suporte",
+  "solicitar_apoio_presencial",
 ];
 
 const TOM_DOT: Record<ConfigTipo["tom"], string> = {
@@ -192,7 +227,7 @@ export default function PaginaAuditoria() {
         {/* Pills de tipo */}
         <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por tipo de ação">
           {TIPOS_ORDEM.map((tipo) => {
-            const cfg = CONFIG_TIPOS[tipo];
+            const cfg = CONFIG_TIPOS[tipo] ?? CONFIG_TIPO_DESCONHECIDO;
             const ativo = tiposSelecionados.includes(tipo);
             const Icone = cfg.icone;
             return (
@@ -371,7 +406,7 @@ function GrupoDia({ grupo }: { grupo: GrupoAuditoria }) {
 
 function ItemAuditoria({ acao }: { acao: AcaoAuditoriaEnriquecida }) {
   const [aberto, setAberto] = useState(false);
-  const cfg = CONFIG_TIPOS[acao.tipo];
+  const cfg = CONFIG_TIPOS[acao.tipo] ?? CONFIG_TIPO_DESCONHECIDO;
   const Icone = cfg.icone;
   const nome = acao.usuario?.nome ?? acao.usuarioNome ?? "Usuário";
   const horario = formatarDataBR(acao.ocorridoEm, "HH:mm");

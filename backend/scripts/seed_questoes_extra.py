@@ -6,7 +6,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import select  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
-from app.models import Alternativa, Conteudo, Materia, Nivel, Questao, Serie  # noqa: E402
+from app.enums import StatusQuestao  # noqa: E402
+from app.models import (  # noqa: E402
+    Alternativa,
+    Conteudo,
+    Escola,
+    Materia,
+    Nivel,
+    Questao,
+    Serie,
+    Usuario,
+)
 
 QUESTOES = [
     ("Português", "9º ano", "Sintaxe", "Fácil",
@@ -107,10 +117,12 @@ QUESTOES = [
 def main() -> None:
     with SessionLocal() as sessao:
         niveis = {n.nome: n for n in sessao.scalars(select(Nivel))}
+        autor = sessao.scalar(select(Usuario).where(Usuario.email == "admin@sedu.se.gov.br"))
+        escolas = sessao.scalars(select(Escola).order_by(Escola.id)).all()
         serie_cache: dict[str, Serie] = {}
         criadas = 0
 
-        for materia_nome, serie_nome, conteudo_nome, nivel_nome, enunciado, alts in QUESTOES:
+        for indice, (materia_nome, serie_nome, conteudo_nome, nivel_nome, enunciado, alts) in enumerate(QUESTOES):
             if sessao.scalar(select(Questao).where(Questao.enunciado == enunciado)):
                 continue
 
@@ -146,6 +158,9 @@ def main() -> None:
                     conteudo=conteudo,
                     nivel=niveis[nivel_nome],
                     adaptacoes=[],
+                    status=StatusQuestao.PUBLICADA,
+                    criado_por_id=autor.id if autor else None,
+                    escola_id=escolas[indice % len(escolas)].id if escolas else None,
                     alternativas=[
                         Alternativa(texto=t, correta=c, ordem_original=i)
                         for i, (t, c) in enumerate(alts, start=1)

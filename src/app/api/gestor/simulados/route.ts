@@ -1,56 +1,51 @@
 import { NextResponse } from "next/server";
-import { mockSimulados } from "@/lib/mocks";
-import type {
-  ParametrosSimulado,
-  Simulado,
-  StatusSimulado,
-} from "@/types";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+
+function respostaErro(erro: unknown): NextResponse {
+  if (erro instanceof ErroBackend) {
+    return NextResponse.json(erro.corpo, { status: erro.status });
+  }
+  return NextResponse.json(
+    { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+    { status: 500 },
+  );
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
-
+  const token = tokenDaRequisicao(request);
   const url = new URL(request.url);
-  const status = url.searchParams.get("status");
-  const busca = url.searchParams.get("busca")?.toLowerCase() ?? "";
-
-  let lista: Simulado[] = mockSimulados;
-
-  if (status) {
-    lista = lista.filter((s) => s.status === status);
+  try {
+    const resp = await backendFetch<Record<string, unknown>>("/gestor/simulados", {
+      token,
+      query: {
+        status: url.searchParams.get("status") ?? undefined,
+        busca: url.searchParams.get("busca") ?? undefined,
+      },
+    });
+    return NextResponse.json(resp);
+  } catch (erro) {
+    return respostaErro(erro);
   }
-  if (busca) {
-    lista = lista.filter((s) =>
-      s.parametros.nome.toLowerCase().includes(busca),
-    );
-  }
-
-  return NextResponse.json({ dados: lista });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
-
-  let parametros: ParametrosSimulado;
+  const token = tokenDaRequisicao(request);
+  let parametros: unknown;
   try {
-    parametros = (await request.json()) as ParametrosSimulado;
+    parametros = await request.json();
   } catch {
     return NextResponse.json(
       { codigo: "CORPO_INVALIDO", mensagem: "Corpo inválido." },
       { status: 400 },
     );
   }
-
-  const id = `sim_${Date.now().toString(36)}`;
-  const novo: Simulado = {
-    id,
-    parametros,
-    questaoIds: [],
-    status: "rascunho" as StatusSimulado,
-    criadoPor: "usu_001",
-    escolaId: "esc_001",
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-  };
-
-  return NextResponse.json(novo, { status: 201 });
+  try {
+    const criado = await backendFetch<Record<string, unknown>>(
+      "/gestor/simulados",
+      { method: "POST", token, body: parametros },
+    );
+    return NextResponse.json(criado, { status: 201 });
+  } catch (erro) {
+    return respostaErro(erro);
+  }
 }

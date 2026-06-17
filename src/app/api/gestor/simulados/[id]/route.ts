@@ -1,24 +1,33 @@
 import { NextResponse } from "next/server";
-import { mockSimulados, mockQuestoes } from "@/lib/mocks";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import { mapQuestao, type QuestaoBackend } from "@/lib/backend-maps";
+
+interface RespostaBackend {
+  simulado: unknown;
+  questoes: QuestaoBackend[];
+}
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const token = tokenDaRequisicao(request);
   const { id } = await params;
-  await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
-
-  const simulado = mockSimulados.find((s) => s.id === id);
-  if (!simulado) {
+  try {
+    const resp = await backendFetch<RespostaBackend>(`/gestor/simulados/${id}`, {
+      token,
+    });
+    return NextResponse.json({
+      simulado: resp.simulado,
+      questoes: (resp.questoes ?? []).map(mapQuestao),
+    });
+  } catch (erro) {
+    if (erro instanceof ErroBackend) {
+      return NextResponse.json(erro.corpo, { status: erro.status });
+    }
     return NextResponse.json(
-      { codigo: "NAO_ENCONTRADO", mensagem: "Simulado não encontrado." },
-      { status: 404 },
+      { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+      { status: 500 },
     );
   }
-
-  const questoes = (simulado.questaoIds ?? [])
-    .map((qid) => mockQuestoes.find((q) => q.id === qid))
-    .filter((q): q is NonNullable<typeof q> => q !== undefined);
-
-  return NextResponse.json({ simulado, questoes });
 }

@@ -6,7 +6,7 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.enums import (
     VinculoAluno,
 )
 from app.models import Aluno, ContatoResponsavel, Edital, Turma, Usuario
+from app.services import auditoria_service
 from app.services.auth_service import gerar_hash_senha
 
 from app.api.permissoes import admin_gestor
@@ -76,7 +77,10 @@ class CadastroAlunoRequest(BaseModel):
 
 @router.post("/aluno", status_code=201)
 def cadastrar_aluno(
-    req: CadastroAlunoRequest, sessao: Session = Depends(get_session),
+    req: CadastroAlunoRequest,
+    request: Request,
+    usuario_logado: Usuario = Depends(admin_gestor),
+    sessao: Session = Depends(get_session),
 ) -> dict:
     if not any(r.parentesco is Parentesco.MAE for r in req.responsaveis):
         raise HTTPException(
@@ -171,6 +175,15 @@ def cadastrar_aluno(
                 email=r.email,
             ),
         )
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario_logado,
+        tipo="criar_aluno",
+        alvo_tipo="aluno",
+        alvo_id=aluno.id,
+        detalhes=f"Cadastrou {usuario.nome} ({aluno.vinculo.value}) - {usuario.email}",
+        request=request,
+    )
     sessao.commit()
     sessao.refresh(aluno)
 

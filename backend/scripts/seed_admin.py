@@ -12,7 +12,7 @@ from app.services import auth_service  # noqa: E402
 
 USUARIOS = [
     ("Administrador SEDU", "admin@sedu.se.gov.br", "sedu123", PerfilUsuario.ADMIN),
-    ("Gestor Demo", "gestor@sedu.se.gov.br", "sedu123", PerfilUsuario.GESTOR),
+    ("Lucia Helena Marques", "gestor@sedu.se.gov.br", "sedu123", PerfilUsuario.GESTOR),
 ]
 
 

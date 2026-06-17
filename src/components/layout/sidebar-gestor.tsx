@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertTriangle,
+  FilePlus2,
   GraduationCap,
   LayoutDashboard,
   ListChecks,
@@ -12,24 +13,20 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrasaoSedu } from "@/components/layout/brasao-sedu";
+import { navegacaoPermitida } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 
-interface ItemNav {
-  href: string;
-  rotulo: string;
-  icone: LucideIcon;
-  matchPrefix?: boolean;
-}
-
-const ITENS: ItemNav[] = [
-  { href: "/gestor/dashboard", rotulo: "Dashboard", icone: LayoutDashboard },
-  { href: "/gestor/simulados", rotulo: "Simulados", icone: ListChecks, matchPrefix: true },
-  { href: "/gestor/turmas", rotulo: "Turmas", icone: GraduationCap },
-  { href: "/gestor/alertas", rotulo: "Alertas IA", icone: AlertTriangle },
-];
+const ICONES: Record<string, LucideIcon> = {
+  alertas: AlertTriangle,
+  "criar-prova": FilePlus2,
+  dashboard: LayoutDashboard,
+  simulados: ListChecks,
+  turmas: GraduationCap,
+};
 
 export function SidebarGestor() {
   const pathname = usePathname();
+  const itens = navegacaoPermitida("gestor");
 
   return (
     <aside
@@ -37,7 +34,6 @@ export function SidebarGestor() {
       data-slot="sidebar-gestor"
       aria-label="Navegação principal"
     >
-      {/* topo: brasão */}
       <div className="border-b border-border px-5 py-4">
         <Link
           href="/gestor/dashboard"
@@ -54,24 +50,29 @@ export function SidebarGestor() {
         </Link>
       </div>
 
-      {/* CTA primário — novo simulado */}
-      <div className="px-3 pt-4 pb-2">
+      <div className="space-y-2 px-3 pt-4 pb-2">
         <Button asChild size="sm" className="w-full gap-2">
           <Link href="/gestor/simulados/novo">
             <Plus className="size-3.5" aria-hidden />
             Novo simulado
           </Link>
         </Button>
+        <Button asChild size="sm" variant="outline" className="w-full gap-2">
+          <Link href="/gestor/provas/nova">
+            <FilePlus2 className="size-3.5" aria-hidden />
+            Prova manual
+          </Link>
+        </Button>
       </div>
 
-      {/* nav itens */}
       <nav className="flex-1 px-3 py-3" aria-label="Menu">
         <ul className="space-y-0.5">
-          {ITENS.map((item) => {
-            const ativo =
-              item.matchPrefix
-                ? pathname.startsWith(item.href)
-                : pathname === item.href;
+          {itens.map((item) => {
+            const Icone = ICONES[item.id] ?? FilePlus2;
+            const ativo = item.matchPrefix
+              ? pathname.startsWith(item.href)
+              : pathname === item.href;
+
             return (
               <li key={item.href}>
                 <Link
@@ -85,7 +86,7 @@ export function SidebarGestor() {
                   )}
                   aria-current={ativo ? "page" : undefined}
                 >
-                  <item.icone
+                  <Icone
                     className={cn(
                       "size-4 shrink-0",
                       ativo ? "text-primary-text" : "",
@@ -106,7 +107,6 @@ export function SidebarGestor() {
         </ul>
       </nav>
 
-      {/* rodapé com versão */}
       <div className="border-t border-border px-5 py-3">
         <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
           v0.1.0 · WCAG AA

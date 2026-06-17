@@ -1,13 +1,10 @@
 """Entrypoint do container do backend.
 
 Ordem:
-  1. Espera o Postgres ficar pronto (retry).
-  2. Cria as tabelas (init_db — idempotente).
-  3. Popula os dados dos mocks SE o banco estiver vazio (seed_from_mocks).
-  4. Sobe a API (uvicorn).
-
-Assim, `docker compose up` entrega o backend + banco + dados funcionando,
-sem precisar de .env nem senha — o mesmo conteúdo que está no Supabase.
+1. Espera o Postgres configurado em DATABASE_URL responder.
+2. Cria/atualiza o schema de forma idempotente.
+3. Executa o seed complementar nao destrutivo.
+4. Sobe a API.
 """
 
 import os
@@ -15,10 +12,12 @@ import subprocess
 import sys
 import time
 
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, text
 
 
 def normaliza(url: str) -> str:
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://") :]
     if url.startswith("postgresql://"):
         return "postgresql+psycopg://" + url[len("postgresql://") :]
     return url
@@ -27,37 +26,24 @@ def normaliza(url: str) -> str:
 def main() -> None:
     url = normaliza(os.environ["DATABASE_URL"])
 
-    # 1. espera o banco
-    print(">> Aguardando o Postgres...")
-    for tentativa in range(40):
+    print(">> Aguardando o Postgres configurado...")
+    for _tentativa in range(40):
         try:
             with create_engine(url).connect() as con:
                 con.execute(text("SELECT 1"))
-            print(">> Postgres pronto.")
+            print(">> Banco pronto.")
             break
         except Exception:
             time.sleep(2)
     else:
-        sys.exit("Postgres não respondeu a tempo.")
+        sys.exit("Banco nao respondeu a tempo.")
 
-    # 2. cria as tabelas
-    print(">> Criando tabelas (init_db)...")
+    print(">> Aplicando schema idempotente...")
     subprocess.run([sys.executable, "scripts/init_db.py"], check=True)
 
-    # 3. popula se estiver vazio
-    from app.database import SessionLocal
-    from app.models import Usuario
+    print(">> Aplicando seed complementar...")
+    subprocess.run([sys.executable, "scripts/seed_demo.py"], check=True)
 
-    with SessionLocal() as s:
-        total = s.scalar(select(func.count()).select_from(Usuario)) or 0
-
-    if total > 0:
-        print(f">> Banco já tem {total} usuários — pulando seed.")
-    else:
-        print(">> Banco vazio — populando com os dados dos mocks...")
-        subprocess.run([sys.executable, "scripts/seed_from_mocks.py"], check=True)
-
-    # 4. sobe a API
     print(">> Subindo a API em 0.0.0.0:8000")
     os.execvp(
         "uvicorn",

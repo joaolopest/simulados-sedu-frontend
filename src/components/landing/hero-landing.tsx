@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useContadorAnimado } from "@/hooks/use-contador-animado";
+import { useLandingPublica } from "@/hooks/api/use-publico";
 
 function PalavraReveal({
   delay,
@@ -52,6 +53,10 @@ function NumeroAnimado({
       {valor}
     </span>
   );
+}
+
+function formatarInteiro(valor: number) {
+  return Math.round(valor).toLocaleString("pt-BR");
 }
 
 function CardMockup({
@@ -97,6 +102,14 @@ function CardMockup({
 
 export function HeroLanding() {
   const [scrollY, setScrollY] = useState(0);
+  const { data } = useLandingPublica();
+  const metricas = data?.metricas;
+  const escolaPrincipal = data?.escolas[0];
+  const escolaLabel = escolaPrincipal
+    ? `${escolaPrincipal.nome} · ${escolaPrincipal.municipio}`
+    : "Rede SEDU";
+  const totalEscolas = metricas?.totalEscolas ?? 0;
+  const totalAlunos = metricas?.totalAlunos ?? 0;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -108,7 +121,7 @@ export function HeroLanding() {
 
   return (
     <section
-      className="relative overflow-hidden bg-marble"
+      className="relative overflow-hidden bg-marble transition-colors dark:bg-shade"
       data-slot="hero-landing"
       aria-labelledby="hero-titulo"
     >
@@ -117,13 +130,13 @@ export function HeroLanding() {
         <div className="md:col-span-7">
           {/* badge eyebrow — materialize delay 0 */}
           <span
-            className="inline-flex items-center gap-2 rounded-full bg-shade px-4 py-2"
+            className="inline-flex items-center gap-2 rounded-full bg-shade px-4 py-2 dark:bg-marble"
             style={{
               animation: "materialize 0.6s var(--ease-quart) 0ms backwards",
             }}
           >
             <span className="size-1.5 rounded-full bg-chartreuse" aria-hidden />
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-marble">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-marble dark:text-shade">
               Secretaria do Espírito Santo
             </span>
           </span>
@@ -131,7 +144,7 @@ export function HeroLanding() {
           {/* h1 — mask-reveal-rtl word-by-word stagger 80ms */}
           <h1
             id="hero-titulo"
-            className="mt-6 font-sans text-shade font-display-bold"
+            className="mt-6 font-sans text-shade font-display-bold dark:text-marble"
             style={{               fontSize: "clamp(2.75rem, 7vw, 5rem)",
               lineHeight: "1.04",
               letterSpacing: "-0.025em",
@@ -156,7 +169,7 @@ export function HeroLanding() {
 
           {/* descrição — materialize delay 600 */}
           <p
-            className="mt-7 max-w-xl text-shade/75"
+            className="mt-7 max-w-xl text-shade/75 dark:text-marble/75"
             style={{
               fontSize: "clamp(1.0625rem, 1.5vw, 1.25rem)",
               lineHeight: "1.5",
@@ -177,14 +190,14 @@ export function HeroLanding() {
           >
             <Link
               href="/login"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-shade px-7 py-4 text-base font-bold text-marble transition-all hover:bg-shade/90 active:translate-y-px"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-shade px-7 py-4 text-base font-bold text-marble transition-all hover:bg-shade/90 active:translate-y-px dark:bg-marble dark:text-shade dark:hover:bg-chartreuse"
             >
               Acessar plataforma
               <ArrowRight className="size-4" aria-hidden />
             </Link>
             <a
               href="#como-funciona"
-              className="inline-flex items-center justify-center rounded-full border-2 border-shade px-7 py-[14px] text-base font-bold text-shade transition-all hover:bg-shade hover:text-marble active:translate-y-px"
+              className="inline-flex items-center justify-center rounded-full border-2 border-shade px-7 py-[14px] text-base font-bold text-shade transition-all hover:bg-shade hover:text-marble active:translate-y-px dark:border-marble dark:text-marble dark:hover:bg-marble dark:hover:text-shade"
             >
               Ver como funciona
             </a>
@@ -201,7 +214,7 @@ export function HeroLanding() {
             >
               <School className="size-3.5 text-shade" aria-hidden />
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-shade tabular-nums">
-                <NumeroAnimado valorFinal={47} /> escolas
+                {formatarInteiro(totalEscolas)} escolas
               </span>
             </span>
             <span
@@ -213,7 +226,7 @@ export function HeroLanding() {
             >
               <GraduationCap className="size-3.5 text-marble" aria-hidden />
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-marble tabular-nums">
-                <NumeroAnimado valorFinal={12420} /> alunos
+                {formatarInteiro(totalAlunos)} alunos
               </span>
             </span>
             <span
@@ -231,16 +244,41 @@ export function HeroLanding() {
           </div>
         </div>
 
-        {/* mockup multi-device */}
+        {/* prévia multi-device */}
         <div className="relative md:col-span-5">
-          <MockupHero scrollY={scrollY} />
+          <MockupHero
+            scrollY={scrollY}
+            escolaInicial={escolaPrincipal?.inicial ?? "SE"}
+            escolaLabel={escolaLabel}
+            metricas={{
+              totalQuestoes: metricas?.totalQuestoes ?? 0,
+              totalSimulados: metricas?.totalSimulados ?? 0,
+              totalAdaptacoes: metricas?.totalAdaptacoes ?? 0,
+              totalAlunos,
+            }}
+          />
         </div>
       </div>
     </section>
   );
 }
 
-function MockupHero({ scrollY }: { scrollY: number }) {
+function MockupHero({
+  scrollY,
+  escolaInicial,
+  escolaLabel,
+  metricas,
+}: {
+  scrollY: number;
+  escolaInicial: string;
+  escolaLabel: string;
+  metricas: {
+    totalQuestoes: number;
+    totalSimulados: number;
+    totalAdaptacoes: number;
+    totalAlunos: number;
+  };
+}) {
   return (
     <div
       className="relative mx-auto h-[560px] w-full max-w-md md:h-[600px]"
@@ -301,36 +339,36 @@ function MockupHero({ scrollY }: { scrollY: number }) {
         />
         <div className="mt-6 flex flex-col items-center text-center">
           <div className="flex size-16 items-center justify-center rounded-full bg-chartreuse text-2xl font-black text-shade">
-            AL
+            {escolaInicial}
           </div>
           <p className="mt-3 font-sans text-base font-bold text-marble">
-            @ana.lucia
+            Rede SEDU
           </p>
           <p className="mt-0.5 font-mono text-[10px] tracking-widest text-marble/70 uppercase">
-            EEEFM Vila Velha · 9º ano
+            {escolaLabel}
           </p>
         </div>
         <ul className="mt-6 space-y-2">
           {[
             {
-              rotulo: "Matemática · Simulado 04",
+              rotulo: `${formatarInteiro(metricas.totalSimulados)} simulados no banco`,
               cor: "bg-chartreuse text-shade",
-              status: "✓",
+              status: "ok",
             },
             {
-              rotulo: "Português · em curso",
+              rotulo: `${formatarInteiro(metricas.totalQuestoes)} questões catalogadas`,
               cor: "bg-poppy text-shade",
-              status: "•",
+              status: "db",
             },
             {
-              rotulo: "Ciências · 02 dez",
+              rotulo: `${formatarInteiro(metricas.totalAlunos)} alunos vinculados`,
               cor: "bg-marble/15 text-marble border border-marble/20",
-              status: "→",
+              status: "db",
             },
             {
-              rotulo: "Histórico completo",
+              rotulo: `${formatarInteiro(metricas.totalAdaptacoes)} com suporte`,
               cor: "bg-marble/15 text-marble border border-marble/20",
-              status: "→",
+              status: "db",
             },
           ].map((s) => (
             <li
@@ -346,7 +384,7 @@ function MockupHero({ scrollY }: { scrollY: number }) {
         </ul>
       </CardMockup>
 
-      {/* stat chartreuse 92% */}
+      {/* stat chartreuse */}
       <CardMockup
         baseRotation={2}
         scrollFactor={0.08}
@@ -358,7 +396,7 @@ function MockupHero({ scrollY }: { scrollY: number }) {
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-shade" aria-hidden />
           <span className="font-mono text-[10px] font-bold tracking-widest text-shade uppercase">
-            Confiança IA
+            Banco de questões
           </span>
         </div>
         <p
@@ -371,13 +409,12 @@ function MockupHero({ scrollY }: { scrollY: number }) {
           }}
         >
           <NumeroAnimado
-            valorFinal={92}
-            formatador={(n) => Math.round(n).toString()}
+            valorFinal={metricas.totalQuestoes}
+            formatador={formatarInteiro}
           />
-          %
         </p>
         <p className="mt-1 inline-flex rounded-full bg-shade px-2 py-1 text-[10px] font-bold text-chartreuse">
-          alta · liberar
+          persistidas no banco
         </p>
       </CardMockup>
 
@@ -393,7 +430,7 @@ function MockupHero({ scrollY }: { scrollY: number }) {
         <div className="flex items-center gap-2">
           <ListChecks className="size-4 text-marble" aria-hidden />
           <span className="font-mono text-[10px] font-bold tracking-widest text-marble uppercase">
-            Novo simulado
+            Simulados
           </span>
         </div>
         <p
@@ -405,19 +442,22 @@ function MockupHero({ scrollY }: { scrollY: number }) {
             letterSpacing: "-0.02em",
           }}
         >
-          Geometria analítica
+          <NumeroAnimado
+            valorFinal={metricas.totalSimulados}
+            formatador={formatarInteiro}
+          />
         </p>
         <div className="mt-3 flex items-center gap-2">
           <span className="rounded-full bg-marble/20 px-3 py-1 text-[10px] font-bold text-marble">
-            9º ano
+            no banco
           </span>
           <span className="rounded-full bg-marble/20 px-3 py-1 text-[10px] font-bold text-marble">
-            20 q.
+            persistidos
           </span>
         </div>
       </CardMockup>
 
-      {/* stat sky +18% */}
+      {/* stat sky */}
       <CardMockup
         baseRotation={3}
         scrollFactor={0.06}
@@ -436,15 +476,13 @@ function MockupHero({ scrollY }: { scrollY: number }) {
             letterSpacing: "-0.03em",
           }}
         >
-          +
           <NumeroAnimado
-            valorFinal={18}
-            formatador={(n) => Math.round(n).toString()}
+            valorFinal={metricas.totalAdaptacoes}
+            formatador={formatarInteiro}
           />
-          %
         </p>
         <p className="mt-1 font-mono text-[10px] font-bold uppercase tracking-widest text-shade/70">
-          vs simulado anterior
+          alunos com suporte
         </p>
       </CardMockup>
 

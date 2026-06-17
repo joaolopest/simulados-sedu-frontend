@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Headphones,
   Building2,
+  NotebookPen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,7 +50,9 @@ interface RespostaLogin {
 const HOME_POR_PERFIL: Record<PerfilUsuario, string> = {
   admin: "/admin/dashboard",
   gestor: "/gestor/dashboard",
+  professor: "/professor/dashboard",
   aluno: "/aluno/home",
+  candidato: "/aluno/home",
   suporte: "/suporte/dashboard",
 };
 
@@ -72,9 +75,21 @@ const PERFIS_DEV: ReadonlyArray<{
     Icone: Building2,
   },
   {
+    perfil: "professor",
+    rotulo: "PROFESSOR",
+    descricao: "Criar prova e questões",
+    Icone: NotebookPen,
+  },
+  {
     perfil: "aluno",
     rotulo: "ALUNO",
     descricao: "Executar simulado",
+    Icone: GraduationCap,
+  },
+  {
+    perfil: "candidato",
+    rotulo: "CANDIDATO",
+    descricao: "Área de aluno",
     Icone: GraduationCap,
   },
   {
@@ -298,7 +313,7 @@ function ConteudoLogin() {
           </div>
           <p className="text-[11px] text-muted-foreground">
             Botões disponíveis apenas em <code>NODE_ENV=development</code>.
-            Loga direto com mock do perfil — não use em produção.
+            Entra com usuário de demonstração do perfil.
           </p>
         </section>
       ) : null}

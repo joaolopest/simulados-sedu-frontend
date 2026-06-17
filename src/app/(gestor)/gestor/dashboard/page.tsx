@@ -48,18 +48,17 @@ import { CardKpi } from "@/components/graficos/card-kpi";
 import { CategoryBadge } from "@/components/ui/category-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
+  DataAtualCliente,
+  SaudacaoAtualCliente,
+} from "@/components/ui/texto-temporal-cliente";
+import {
   cn,
-  formatarDataBR,
   formatarNota,
   formatarPorcentagem,
   formatarTempoRelativo,
   gerarIniciais,
 } from "@/lib/utils";
-import {
-  obterNomeMaterias,
-  obterNomeSerie,
-  saudacaoDoMomento,
-} from "@/lib/displays";
+import { obterNomeMaterias, obterNomeSerie } from "@/lib/displays";
 import type { Simulado, StatusSimulado } from "@/types";
 
 type SimuladoComContagem = Simulado & { totalAlunos: number };
@@ -78,12 +77,12 @@ export default function PaginaDashboardGestor() {
     <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-10">
       <header>
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-          {formatarDataBR(new Date(), "EEEE',' d 'de' MMMM")}
+          <DataAtualCliente formato="EEEE',' d 'de' MMMM" />
         </p>
         <h1
           className="mt-2 font-serif text-3xl tracking-tight md:text-4xl"
         >
-          {saudacaoDoMomento()},{" "}
+          <SaudacaoAtualCliente />,{" "}
           <span className="text-primary-text">{primeiroNome || "—"}</span>.
         </h1>
         <p className="mt-3 max-w-2xl text-base text-muted-foreground">

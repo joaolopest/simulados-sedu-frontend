@@ -9,7 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BadgeIA } from "@/components/ia/badge-ia";
 import { CardKpi } from "@/components/graficos/card-kpi";
 import { EmptyState } from "@/components/ui/empty-state";
-import { cn, formatarDataBR, formatarPorcentagem, gerarIniciais } from "@/lib/utils";
+import { DataAtualCliente } from "@/components/ui/texto-temporal-cliente";
+import { cn, formatarPorcentagem, gerarIniciais } from "@/lib/utils";
 
 interface InsightCurto { id?: string; titulo?: string; texto?: string; }
 interface PontoTendencia { semana: string; questoes: number; simulados: number; importacoes: number; }
@@ -20,7 +21,9 @@ export default function PaginaDashboardAdmin() {
   return (
     <div className="shell-pagina">
       <header>
-        <p className="texto-rotulo">{formatarDataBR(new Date(), "EEEE',' d 'de' MMMM yyyy")}</p>
+        <p className="texto-rotulo">
+          <DataAtualCliente formato="EEEE',' d 'de' MMMM yyyy" />
+        </p>
         <h1 className="titulo-pagina mt-2">Painel administrativo</h1>
         <p className="mt-3 max-w-2xl text-base text-muted-foreground">Saúde da rede SEDU em um relance: acervo, escolas conectadas, atividade semanal e sinais pedagógicos detectados pela IA.</p>
       </header>

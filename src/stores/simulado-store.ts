@@ -1,38 +1,14 @@
 "use client";
 
 import { create } from "zustand";
-import type {
-  FilaRespostaPendente,
-  RespostaQuestao,
-  Simulado,
-} from "@/types";
+import type { RespostaQuestao, Simulado } from "@/types";
 
-const CHAVE_FILA_LOCAL = "sedu-fila-respostas";
-
-function carregarFilaPersistida(): FilaRespostaPendente | null {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    const bruto = localStorage.getItem(CHAVE_FILA_LOCAL);
-    if (!bruto) return null;
-    const dados = JSON.parse(bruto) as FilaRespostaPendente;
-    if (!dados.simuladoId || !Array.isArray(dados.respostas)) return null;
-    return dados;
-  } catch {
-    return null;
-  }
-}
-
-function persistirFila(fila: FilaRespostaPendente | null): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    if (fila === null) {
-      localStorage.removeItem(CHAVE_FILA_LOCAL);
-      return;
-    }
-    localStorage.setItem(CHAVE_FILA_LOCAL, JSON.stringify(fila));
-  } catch {
-    // Ignorar — pode estar bloqueado em modo privado.
-  }
+function respostasPorQuestao(
+  respostas: RespostaQuestao[],
+): Record<string, RespostaQuestao> {
+  return Object.fromEntries(
+    respostas.map((resposta) => [resposta.questaoId, resposta]),
+  );
 }
 
 export interface EstadoSimulado {
@@ -41,9 +17,11 @@ export interface EstadoSimulado {
   respostas: Record<string, RespostaQuestao>;
   iniciadoEm: string | null;
   modoFoco: boolean;
-  filaPendente: FilaRespostaPendente | null;
 
-  iniciarSimulado: (simulado: Simulado) => void;
+  iniciarSimulado: (
+    simulado: Simulado,
+    respostasIniciais?: RespostaQuestao[],
+  ) => void;
   responderQuestao: (questaoId: string, alternativaId: string) => void;
   marcarRevisao: (questaoId: string) => void;
   proximaQuestao: () => void;
@@ -52,10 +30,6 @@ export interface EstadoSimulado {
   alternarModoFoco: () => void;
   finalizarSimulado: () => void;
   limpar: () => void;
-
-  obterRespostasDaFila: () => RespostaQuestao[];
-  adicionarAFila: (resposta: RespostaQuestao) => void;
-  limparFila: () => void;
 }
 
 const ESTADO_INICIAL = {
@@ -64,18 +38,16 @@ const ESTADO_INICIAL = {
   respostas: {} as Record<string, RespostaQuestao>,
   iniciadoEm: null as string | null,
   modoFoco: false,
-  filaPendente: null as FilaRespostaPendente | null,
 };
 
 export const useSimuladoStore = create<EstadoSimulado>()((set, get) => ({
   ...ESTADO_INICIAL,
-  filaPendente: carregarFilaPersistida(),
 
-  iniciarSimulado: (simulado) => {
+  iniciarSimulado: (simulado, respostasIniciais = []) => {
     set({
       simuladoAtual: simulado,
       questaoAtualIndice: 0,
-      respostas: {},
+      respostas: respostasPorQuestao(respostasIniciais),
       iniciadoEm: new Date().toISOString(),
       modoFoco: false,
     });
@@ -95,7 +67,6 @@ export const useSimuladoStore = create<EstadoSimulado>()((set, get) => ({
       respondidaEm: new Date().toISOString(),
     };
     set({ respostas: { ...respostas, [questaoId]: nova } });
-    get().adicionarAFila(nova);
   },
 
   marcarRevisao: (questaoId) => {
@@ -150,32 +121,6 @@ export const useSimuladoStore = create<EstadoSimulado>()((set, get) => ({
   },
 
   limpar: () => {
-    set({ ...ESTADO_INICIAL, filaPendente: null });
-    persistirFila(null);
-  },
-
-  obterRespostasDaFila: () => get().filaPendente?.respostas ?? [],
-
-  adicionarAFila: (resposta) => {
-    const { filaPendente, simuladoAtual } = get();
-    if (!simuladoAtual) return;
-    const baseAlunoId = filaPendente?.alunoId ?? "";
-    const respostasExistentes = filaPendente?.respostas ?? [];
-    const filtradas = respostasExistentes.filter(
-      (item) => item.questaoId !== resposta.questaoId,
-    );
-    const novaFila: FilaRespostaPendente = {
-      simuladoId: simuladoAtual.id,
-      alunoId: baseAlunoId,
-      respostas: [...filtradas, resposta],
-      ultimoSyncEm: new Date().toISOString(),
-    };
-    persistirFila(novaFila);
-    set({ filaPendente: novaFila });
-  },
-
-  limparFila: () => {
-    persistirFila(null);
-    set({ filaPendente: null });
+    set({ ...ESTADO_INICIAL });
   },
 }));

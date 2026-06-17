@@ -62,7 +62,7 @@ export function SecaoAcessibilidade() {
   return (
     <section
       id="acessibilidade"
-      className="bg-marble"
+      className="bg-marble transition-colors dark:bg-shade"
       data-slot="secao-acessibilidade"
       aria-labelledby="acessibilidade-titulo"
     >
@@ -78,7 +78,7 @@ export function SecaoAcessibilidade() {
           </p>
           <h2
             id="acessibilidade-titulo"
-            className="mt-4 font-sans text-shade font-display-bold"
+            className="mt-4 font-sans text-shade font-display-bold dark:text-marble"
             style={{               fontSize: "clamp(2.25rem, 5vw, 3.75rem)",
               lineHeight: "1.06",
               letterSpacing: "-0.02em",
@@ -89,7 +89,7 @@ export function SecaoAcessibilidade() {
             <span className="text-poppy">o mesmo simulado da turma.</span>
           </h2>
           <p
-            className="mt-5 max-w-2xl text-shade/75 md:text-[17px]"
+            className="mt-5 max-w-2xl text-shade/75 dark:text-marble/75 md:text-[17px]"
             style={{
               animation: "materialize 0.6s var(--ease-quart) 300ms backwards",
             }}

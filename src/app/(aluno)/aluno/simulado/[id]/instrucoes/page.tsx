@@ -24,7 +24,7 @@ const INSTRUCOES = [
     icone: Save,
     titulo: "Suas respostas são salvas automaticamente",
     descricao:
-      "A cada alternativa marcada, o sistema guarda seu progresso. Se a internet cair, o simulado continua e sincroniza quando voltar.",
+      "A cada alternativa marcada, o sistema salva seu progresso no banco. Mantenha a internet ativa para não perder a resposta atual.",
   },
   {
     icone: Clock,

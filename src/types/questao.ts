@@ -54,6 +54,7 @@ export interface Questao {
   status: StatusQuestao;
   competencias: string[];
   criadoPor: string;
+  escolaId?: string;
   criadoEm: string;
   atualizadoEm: string;
   versao: number;

@@ -1,24 +1,36 @@
 import { NextResponse } from "next/server";
-import { mockNotificacoes } from "@/lib/mocks";
+import { backendFetch, ErroBackend, tokenDaRequisicao } from "@/lib/backend";
+import { mapNotificacao, type NotificacaoBackend } from "@/lib/backend-maps";
+
+interface ListaBackend {
+  total: number;
+  nao_lidas: number;
+  dados: NotificacaoBackend[];
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
-  await new Promise((r) => setTimeout(r, 120 + Math.random() * 180));
-  const url = new URL(request.url);
-  const usuarioId = url.searchParams.get("usuarioId");
-
-  let lista = mockNotificacoes;
-  if (usuarioId) {
-    lista = lista.filter((n) => n.destinatarioId === usuarioId);
+  const token = tokenDaRequisicao(request);
+  if (!token) {
+    return NextResponse.json(
+      { codigo: "NAO_AUTENTICADO", mensagem: "Token ausente." },
+      { status: 401 },
+    );
   }
-
-  const ordenadas = [...lista].sort((a, b) =>
-    b.criadaEm.localeCompare(a.criadaEm),
-  );
-  const naoLidas = ordenadas.filter((n) => !n.lida).length;
-
-  return NextResponse.json({
-    total: ordenadas.length,
-    naoLidas,
-    dados: ordenadas,
-  });
+  try {
+    // O backend devolve as notificações do próprio usuário (pelo token).
+    const resp = await backendFetch<ListaBackend>("/notificacoes", { token });
+    return NextResponse.json({
+      total: resp.total,
+      naoLidas: resp.nao_lidas,
+      dados: resp.dados.map(mapNotificacao),
+    });
+  } catch (erro) {
+    if (erro instanceof ErroBackend) {
+      return NextResponse.json(erro.corpo, { status: erro.status });
+    }
+    return NextResponse.json(
+      { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+      { status: 500 },
+    );
+  }
 }

@@ -2,18 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, History, Home, User } from "lucide-react";
+import { Bell, History, Home, User, type LucideIcon } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { navegacaoPermitida } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 
-const ITENS = [
-  { href: "/aluno/home", rotulo: "Início", icone: Home },
-  { href: "/aluno/historico", rotulo: "Histórico", icone: History },
-  { href: "/notificacoes", rotulo: "Avisos", icone: Bell },
-  { href: "/perfil", rotulo: "Perfil", icone: User },
-] as const;
+const ICONES: Record<string, LucideIcon> = {
+  historico: History,
+  inicio: Home,
+  notificacoes: Bell,
+  perfil: User,
+};
 
 export function NavInferiorAluno() {
   const pathname = usePathname();
+  const { usuario } = useAuth();
+  const perfil = usuario?.perfil === "candidato" ? "candidato" : "aluno";
+  const itens = navegacaoPermitida(perfil);
 
   return (
     <nav
@@ -26,9 +31,11 @@ export function NavInferiorAluno() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="grid grid-cols-4">
-        {ITENS.map((item) => {
+        {itens.map((item) => {
+          const Icone = ICONES[item.id];
           const ativo =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
+
           return (
             <li key={item.href}>
               <Link
@@ -42,7 +49,7 @@ export function NavInferiorAluno() {
                 )}
                 aria-current={ativo ? "page" : undefined}
               >
-                <item.icone
+                <Icone
                   className={cn(
                     "size-5 transition-transform",
                     ativo && "scale-110",

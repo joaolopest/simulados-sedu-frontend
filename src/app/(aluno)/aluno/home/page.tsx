@@ -17,10 +17,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { GraficoLinha } from "@/components/graficos/grafico-linha";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  obterNomeMaterias,
-  obterNomeSerie,
-  saudacaoDoMomento,
-} from "@/lib/displays";
+  DataAtualCliente,
+  SaudacaoAtualCliente,
+} from "@/components/ui/texto-temporal-cliente";
+import { obterNomeMaterias, obterNomeSerie } from "@/lib/displays";
 import {
   formatarDataBR,
   formatarNota,
@@ -40,12 +40,12 @@ export default function PaginaHomeAluno() {
       {/* saudação */}
       <header>
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          {formatarDataBR(new Date(), "EEEE',' d 'de' MMMM")}
+          <DataAtualCliente formato="EEEE',' d 'de' MMMM" />
         </p>
         <h1
           className="mt-2 font-serif text-3xl tracking-tight md:text-4xl"
         >
-          {saudacaoDoMomento()},{" "}
+          <SaudacaoAtualCliente />,{" "}
           <span className="text-primary-text">{primeiroNome || "—"}</span>.
         </h1>
         {data?.mensagemBoasVindas && (
@@ -379,4 +379,3 @@ function ErroCard({ aoTentarDeNovo }: { aoTentarDeNovo: () => void }) {
     </div>
   );
 }
-

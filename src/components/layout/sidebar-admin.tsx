@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Building2,
   ClipboardCheck,
+  FilePlus2,
   FileQuestion,
   LayoutDashboard,
   Plus,
@@ -13,25 +14,21 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrasaoSedu } from "@/components/layout/brasao-sedu";
+import { navegacaoPermitida } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 
-interface ItemNav {
-  href: string;
-  rotulo: string;
-  icone: LucideIcon;
-  matchPrefix?: boolean;
-}
-
-const ITENS: ItemNav[] = [
-  { href: "/admin/dashboard", rotulo: "Dashboard", icone: LayoutDashboard },
-  { href: "/admin/questoes", rotulo: "Questões", icone: FileQuestion, matchPrefix: true },
-  { href: "/admin/escolas", rotulo: "Escolas", icone: Building2 },
-  { href: "/admin/usuarios", rotulo: "Usuários", icone: Users },
-  { href: "/admin/auditoria", rotulo: "Auditoria", icone: ClipboardCheck },
-];
+const ICONES: Record<string, LucideIcon> = {
+  auditoria: ClipboardCheck,
+  dashboard: LayoutDashboard,
+  escolas: Building2,
+  "criar-prova": FilePlus2,
+  questoes: FileQuestion,
+  usuarios: Users,
+};
 
 export function SidebarAdmin() {
   const pathname = usePathname();
+  const itens = navegacaoPermitida("admin");
 
   return (
     <aside
@@ -66,10 +63,12 @@ export function SidebarAdmin() {
 
       <nav className="flex-1 px-3 py-3" aria-label="Menu">
         <ul className="space-y-0.5">
-          {ITENS.map((item) => {
+          {itens.map((item) => {
+            const Icone = ICONES[item.id] ?? FileQuestion;
             const ativo = item.matchPrefix
               ? pathname.startsWith(item.href)
               : pathname === item.href;
+
             return (
               <li key={item.href}>
                 <Link
@@ -83,7 +82,7 @@ export function SidebarAdmin() {
                   )}
                   aria-current={ativo ? "page" : undefined}
                 >
-                  <item.icone
+                  <Icone
                     className={cn(
                       "size-4 shrink-0",
                       ativo ? "text-primary-text" : "",
@@ -92,7 +91,10 @@ export function SidebarAdmin() {
                   />
                   <span className="flex-1 truncate">{item.rotulo}</span>
                   {ativo && (
-                    <span aria-hidden className="size-1 rounded-full bg-primary-text" />
+                    <span
+                      aria-hidden
+                      className="size-1 rounded-full bg-primary-text"
+                    />
                   )}
                 </Link>
               </li>

@@ -1,33 +1,36 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { format, formatDistanceToNow, parseISO } from "date-fns";
+import { format, formatDistanceToNow, isValid, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-function paraData(data: string | Date): Date {
-  if (data instanceof Date) return data;
-  return parseISO(data);
+// Converte para Date de forma tolerante: aceita null/undefined/strings inválidas
+// e devolve null nesses casos (em vez de "Invalid Date", que faz date-fns lançar).
+function paraData(data: string | Date | null | undefined): Date | null {
+  if (!data) return null;
+  const d = data instanceof Date ? data : parseISO(data);
+  return isValid(d) ? d : null;
 }
 
 export function formatarDataBR(
-  data: string | Date,
+  data: string | Date | null | undefined,
   formato: string = "dd/MM/yyyy",
 ): string {
-  return format(paraData(data), formato, { locale: ptBR });
+  const d = paraData(data);
+  return d ? format(d, formato, { locale: ptBR }) : "—";
 }
 
-export function formatarDataHoraBR(data: string | Date): string {
-  return format(paraData(data), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+export function formatarDataHoraBR(data: string | Date | null | undefined): string {
+  const d = paraData(data);
+  return d ? format(d, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : "—";
 }
 
-export function formatarTempoRelativo(data: string | Date): string {
-  return formatDistanceToNow(paraData(data), {
-    addSuffix: true,
-    locale: ptBR,
-  });
+export function formatarTempoRelativo(data: string | Date | null | undefined): string {
+  const d = paraData(data);
+  return d ? formatDistanceToNow(d, { addSuffix: true, locale: ptBR }) : "—";
 }
 
 export function formatarMinutosSegundos(totalSegundos: number): string {

@@ -31,18 +31,10 @@ export function useContadorAnimado({
 
   useEffect(() => {
     const match = typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
-    if (match.matches) return;
-
-    const observador = new IntersectionObserver(
-      (entradas) => {
-        if (entradas[0].isIntersecting) {
-          inicioRef.current = null;
-          animacaoRef.current = requestAnimationFrame(animar);
-          observador.disconnect();
-        }
-      },
-      { threshold: 0.3 }
-    );
+    if (match.matches) {
+      setValor(formatadorRef.current(valorFinal));
+      return;
+    }
 
     const animar = (timestamp: number) => {
       if (!inicioRef.current) inicioRef.current = timestamp;
@@ -58,6 +50,38 @@ export function useContadorAnimado({
         animacaoRef.current = requestAnimationFrame(animar);
       }
     };
+
+    const iniciar = () => {
+      inicioRef.current = null;
+      if (animacaoRef.current) {
+        cancelAnimationFrame(animacaoRef.current);
+      }
+      animacaoRef.current = requestAnimationFrame(animar);
+    };
+
+    if (elementoRef.current) {
+      const rect = elementoRef.current.getBoundingClientRect();
+      const visivel =
+        rect.top < window.innerHeight * 0.7 && rect.bottom > window.innerHeight * 0.3;
+      if (visivel) {
+        iniciar();
+        return () => {
+          if (animacaoRef.current) {
+            cancelAnimationFrame(animacaoRef.current);
+          }
+        };
+      }
+    }
+
+    const observador = new IntersectionObserver(
+      (entradas) => {
+        if (entradas[0].isIntersecting) {
+          iniciar();
+          observador.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
 
     if (elementoRef.current) {
       observador.observe(elementoRef.current);
