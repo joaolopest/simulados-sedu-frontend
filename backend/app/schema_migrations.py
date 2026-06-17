@@ -157,6 +157,7 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         """
         UPDATE usuarios
         SET nome = CASE email
+            WHEN 'admin@sedu.se.gov.br' THEN 'Renata Albuquerque Cardoso'
             WHEN 'gestor@sedu.se.gov.br' THEN 'Lucia Helena Marques'
             WHEN 'professor@sedu.se.gov.br' THEN 'Antonio Carlos Brandao'
             WHEN 'suporte@sedu.se.gov.br' THEN 'Roberto Carlos Nogueira'
@@ -165,6 +166,7 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
             ELSE nome
         END
         WHERE email IN (
+            'admin@sedu.se.gov.br',
             'gestor@sedu.se.gov.br',
             'professor@sedu.se.gov.br',
             'suporte@sedu.se.gov.br',
@@ -172,6 +174,7 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
             'candidato@sedu.se.gov.br'
         )
           AND nome IN (
+            'Administrador SEDU',
             'Gestor Demo',
             'Gestor Escolar Demo',
             'Professor Demo',
@@ -184,6 +187,7 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         """
         UPDATE acoes_auditoria
         SET usuario_nome = CASE usuario_nome
+            WHEN 'Administrador SEDU' THEN 'Renata Albuquerque Cardoso'
             WHEN 'Gestor Demo' THEN 'Lucia Helena Marques'
             WHEN 'Gestor Escolar Demo' THEN 'Lucia Helena Marques'
             WHEN 'Professor Demo' THEN 'Antonio Carlos Brandao'
@@ -194,6 +198,7 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
             ELSE usuario_nome
         END
         WHERE usuario_nome IN (
+            'Administrador SEDU',
             'Gestor Demo',
             'Gestor Escolar Demo',
             'Professor Demo',
@@ -211,7 +216,9 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
             replace(
             replace(
             replace(
+            replace(
             replace(detalhes,
+                'Administrador SEDU', 'Renata Albuquerque Cardoso'),
                 'Gestor Escolar Demo', 'Lucia Helena Marques'),
                 'Gestor Demo', 'Lucia Helena Marques'),
                 'Professor Demo', 'Antonio Carlos Brandao'),
@@ -222,6 +229,7 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         WHERE detalhes IS NOT NULL
           AND (
             detalhes LIKE '%Gestor Demo%'
+            OR detalhes LIKE '%Administrador SEDU%'
             OR detalhes LIKE '%Gestor Escolar Demo%'
             OR detalhes LIKE '%Professor Demo%'
             OR detalhes LIKE '%Suporte Demo%'
@@ -234,6 +242,15 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         UPDATE simulados
         SET titulo = 'Diagnostica 9A'
         WHERE titulo = 'Diagnostica Demo - 9A'
+        """,
+        """
+        UPDATE escolas
+        SET codigo_inep = CASE codigo_inep
+            WHEN 'SEDU-DEMO-001' THEN '32001001'
+            WHEN 'SEDU-DEMO-002' THEN '32001002'
+            ELSE codigo_inep
+        END
+        WHERE codigo_inep IN ('SEDU-DEMO-001', 'SEDU-DEMO-002')
         """,
         """
         DO $$

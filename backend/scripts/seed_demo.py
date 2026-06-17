@@ -11,7 +11,7 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -38,6 +38,31 @@ from app.services import auth_service  # noqa: E402
 
 SENHA_DEMO = "sedu123"
 ANO_LETIVO = 2026
+
+LOGIN_PADRAO = {
+    "admin@sedu.se.gov.br": "Renata Albuquerque Cardoso",
+    "gestor@sedu.se.gov.br": "Lucia Helena Marques",
+    "professor@sedu.se.gov.br": "Antonio Carlos Brandao",
+    "suporte@sedu.se.gov.br": "Roberto Carlos Nogueira",
+    "aluno@sedu.se.gov.br": "Ana Silva Souza",
+    "candidato@sedu.se.gov.br": "Marcos Vinicius Andrade",
+}
+
+NOMES_LEGADO = {
+    "Administrador SEDU": "Renata Albuquerque Cardoso",
+    "Gestor Demo": "Lucia Helena Marques",
+    "Gestor Escolar Demo": "Lucia Helena Marques",
+    "Professor Demo": "Antonio Carlos Brandao",
+    "Suporte Demo": "Roberto Carlos Nogueira",
+    "Suporte Pedagogico Demo": "Roberto Carlos Nogueira",
+    "Aluno Demo": "Ana Silva Souza",
+    "Candidato Demo": "Marcos Vinicius Andrade",
+}
+
+CODIGOS_INEP_LEGADO = {
+    "SEDU-DEMO-001": "32001001",
+    "SEDU-DEMO-002": "32001002",
+}
 
 SERIE_CODES = [
     "6_fundamental",
@@ -321,13 +346,13 @@ def main() -> None:
         escola = _get_or_create_escola(
             sessao,
             nome="Escola Estadual Professor Anisio Teixeira",
-            codigo_inep="SEDU-DEMO-001",
+            codigo_inep="32001001",
             municipio="Vitoria",
         )
         escola2 = _get_or_create_escola(
             sessao,
             nome="Escola Estadual Maria Ortiz",
-            codigo_inep="SEDU-DEMO-002",
+            codigo_inep="32001002",
             municipio="Vila Velha",
         )
 
@@ -340,7 +365,10 @@ def main() -> None:
         escolas_rede, turmas_rede = _seed_rede_escolar(sessao, series)
 
         admin = _get_or_create_usuario(
-            sessao, "Administrador SEDU", "admin@sedu.se.gov.br", PerfilUsuario.ADMIN
+            sessao,
+            "Renata Albuquerque Cardoso",
+            "admin@sedu.se.gov.br",
+            PerfilUsuario.ADMIN,
         )
         gestor = _get_or_create_usuario(
             sessao,
@@ -406,6 +434,7 @@ def main() -> None:
         simulado = _get_or_create_simulado(sessao, gestor, turma_9a, questoes[:4])
         _get_or_create_respostas_demo(sessao, aluno, simulado)
         _get_or_create_notificacao(sessao, aluno_usuario, simulado)
+        _normalizar_identidades_legado(sessao)
 
         sessao.commit()
 
@@ -453,6 +482,13 @@ def _get_or_create_conteudo(sessao, nome: str, materia: Materia) -> Conteudo:
 def _get_or_create_escola(sessao, nome: str, codigo_inep: str, municipio: str) -> Escola:
     obj = sessao.scalar(select(Escola).where(Escola.codigo_inep == codigo_inep))
     if obj is None:
+        codigo_legado = next(
+            (antigo for antigo, novo in CODIGOS_INEP_LEGADO.items() if novo == codigo_inep),
+            None,
+        )
+        if codigo_legado is not None:
+            obj = sessao.scalar(select(Escola).where(Escola.codigo_inep == codigo_legado))
+    if obj is None:
         obj = Escola(
             nome=nome,
             codigo_inep=codigo_inep,
@@ -464,7 +500,9 @@ def _get_or_create_escola(sessao, nome: str, codigo_inep: str, municipio: str) -
         sessao.add(obj)
         sessao.flush()
     else:
-        obj.nome = obj.nome or nome
+        if obj.codigo_inep in CODIGOS_INEP_LEGADO:
+            obj.codigo_inep = CODIGOS_INEP_LEGADO[obj.codigo_inep]
+        obj.nome = nome if not obj.nome or "Demo" in obj.nome else obj.nome
         obj.municipio = obj.municipio or municipio
         obj.uf = obj.uf or "ES"
         obj.ativa = True
@@ -654,6 +692,11 @@ def _get_or_create_usuario(
             obj.ultimo_acesso = ultimo_acesso
         if reativar and not obj.ativo:
             obj.ativo = True
+        nome_padrao = LOGIN_PADRAO.get(email)
+        if obj.nome in NOMES_LEGADO:
+            obj.nome = NOMES_LEGADO[obj.nome]
+        elif nome_padrao and obj.nome in ("", nome, "Administrador SEDU"):
+            obj.nome = nome_padrao
     return obj
 
 
@@ -910,6 +953,61 @@ def _get_or_create_notificacao(sessao, aluno: Usuario, simulado: Simulado) -> No
             acao_url=f"/aluno/simulado/{simulado.id}/instrucoes",
             acao_label="Iniciar simulado",
         )
+    )
+
+
+def _normalizar_identidades_legado(sessao) -> None:
+    """Atualiza nomes/codigos antigos do seed sem apagar historico do banco."""
+    for antigo, novo in NOMES_LEGADO.items():
+        sessao.execute(
+            text("UPDATE usuarios SET nome = :novo WHERE nome = :antigo"),
+            {"novo": novo, "antigo": antigo},
+        )
+        sessao.execute(
+            text("UPDATE acoes_auditoria SET usuario_nome = :novo WHERE usuario_nome = :antigo"),
+            {"novo": novo, "antigo": antigo},
+        )
+        sessao.execute(
+            text(
+                """
+                UPDATE acoes_auditoria
+                SET detalhes = replace(detalhes, :antigo, :novo)
+                WHERE detalhes IS NOT NULL AND detalhes LIKE :padrao
+                """
+            ),
+            {"novo": novo, "antigo": antigo, "padrao": f"%{antigo}%"},
+        )
+
+    for email, nome in LOGIN_PADRAO.items():
+        sessao.execute(
+            text(
+                """
+                UPDATE usuarios
+                SET nome = :nome
+                WHERE email = :email
+                  AND nome IN (
+                    'Administrador SEDU',
+                    'Gestor Demo',
+                    'Gestor Escolar Demo',
+                    'Professor Demo',
+                    'Suporte Demo',
+                    'Suporte Pedagogico Demo',
+                    'Aluno Demo',
+                    'Candidato Demo'
+                  )
+                """
+            ),
+            {"nome": nome, "email": email},
+        )
+
+    for antigo, novo in CODIGOS_INEP_LEGADO.items():
+        sessao.execute(
+            text("UPDATE escolas SET codigo_inep = :novo WHERE codigo_inep = :antigo"),
+            {"novo": novo, "antigo": antigo},
+        )
+
+    sessao.execute(
+        text("UPDATE simulados SET titulo = 'Diagnostica 9A' WHERE titulo = 'Diagnostica Demo - 9A'")
     )
 
 

@@ -75,6 +75,16 @@ Na raiz:
 
 O sync copia Supabase para o Postgres local. Ele pode sobrescrever o backup local, mas não apaga o Supabase.
 
+## Importar questões ENEM
+
+Com o banco configurado em `DATABASE_URL`, rode na raiz do projeto:
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\importar_enem_zip.py --zip C:\Projects\Dev\enem-api-main.zip
+```
+
+O importador lê o ZIP externo, grava em `questoes`/`alternativas`, cria etiquetas ENEM faltantes, marca cada item com origem `enem:ano:questao:idioma` e registra auditoria em `acoes_auditoria`. A execução é idempotente.
+
 ## Acesso de Demonstração
 
 Todos usam senha `sedu123`.
@@ -103,6 +113,7 @@ O backend é a fonte de autorização. O frontend apenas esconde ou desabilita o
 ```text
 backend/scripts/init_db.py      cria tabelas e aplica migrações idempotentes
 backend/scripts/seed_demo.py    completa dados persistentes mínimos
+backend/scripts/importar_enem_zip.py importa questões do ZIP ENEM para o banco
 backend/scripts/reset_db.py     reseta banco local/dev e roda seed
 scripts/start-app.ps1           inicia app com fallback Supabase -> Docker
 scripts/sync-supabase-to-local.ps1  copia Supabase para backup local

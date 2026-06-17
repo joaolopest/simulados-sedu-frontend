@@ -1,4 +1,4 @@
-# Fluxo Postman pelo backend
+# Fluxo Pelo Backend No Postman
 
 Base local:
 
@@ -24,7 +24,19 @@ Use o `token` retornado como:
 Authorization: Bearer {{admin_token}}
 ```
 
-## 1. Cadastrar 3 questoes
+Antes de montar o fluxo, consulte valores reais do banco:
+
+```http
+GET /etiquetas/series
+GET /etiquetas/materias
+GET /etiquetas/niveis
+GET /etiquetas/conteudos?materia=Matemática
+GET /estrutura/turmas
+```
+
+## 1. Cadastrar 3 Questoes
+
+Exemplo usando etiquetas coerentes com o seed/importacao ENEM:
 
 ```http
 POST /questoes
@@ -32,26 +44,24 @@ Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
-  "enunciado": "Questao 1 - quanto e 1 + 1?",
+  "enunciado": "Uma turma arrecadou 48 caixas de alimentos e distribuiu igualmente entre 6 familias. Quantas caixas cada familia recebeu?",
   "serie": "1ª série EM",
-  "materia": "Matematica Postman",
-  "conteudo": "Fluxo Postman",
+  "materia": "Matemática",
+  "conteudo": "ENEM - Matemática",
   "nivel": "Fácil",
   "status": "publicada",
   "alternativas": [
-    { "texto": "2", "correta": true },
-    { "texto": "1", "correta": false },
-    { "texto": "3", "correta": false },
-    { "texto": "4", "correta": false }
+    { "texto": "6", "correta": false },
+    { "texto": "8", "correta": true },
+    { "texto": "12", "correta": false },
+    { "texto": "48", "correta": false }
   ]
 }
 ```
 
-Repita com outros enunciados. Guarde os ids como `{{questao_1}}`, `{{questao_2}}`, `{{questao_3}}`.
+Repita com outros enunciados coerentes e guarde os ids como `{{questao_1}}`, `{{questao_2}}`, `{{questao_3}}`.
 
-Use `GET /etiquetas/series`, `GET /etiquetas/materias`, `GET /etiquetas/niveis`, `GET /etiquetas/conteudos?materia={{materia}}` e `GET /estrutura/turmas` para pegar valores existentes no banco.
-
-## 2. Criar 1 prova
+## 2. Criar 1 Prova
 
 ```http
 POST /simulados
@@ -61,17 +71,17 @@ Content-Type: application/json
 {
   "gestor_id": {{admin_usuario_id}},
   "turma_id": {{turma_id}},
-  "titulo": "Prova Postman",
+  "titulo": "Avaliação diagnóstica - Matemática EM",
   "serie": "1ª série EM",
-  "materia": "Matematica Postman",
-  "conteudos": ["Fluxo Postman"],
+  "materia": "Matemática",
+  "conteudos": ["ENEM - Matemática"],
   "quantidade": 3
 }
 ```
 
 Guarde o `id` como `{{simulado_id}}`.
 
-## 3. Associar as 3 questoes a prova
+## 3. Associar As 3 Questoes A Prova
 
 ```http
 POST /simulados/{{simulado_id}}/questoes
@@ -83,7 +93,7 @@ Content-Type: application/json
 }
 ```
 
-## 4. Criar um aluno
+## 4. Criar Um Aluno
 
 ```http
 POST /cadastro/aluno
@@ -91,8 +101,8 @@ Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
-  "nome": "Aluno Postman",
-  "email": "aluno.postman@example.com",
+  "nome": "Rafael Costa Almeida",
+  "email": "rafael.almeida203@aluno.sedu.es.gov.br",
   "senha": "sedu123",
   "cpf": "90000000001",
   "data_nascimento": "2011-05-10",
@@ -100,7 +110,7 @@ Content-Type: application/json
   "etnia": "parda",
   "escolaridade": "fundamental_incompleto",
   "endereco": {
-    "logradouro": "Rua Teste",
+    "logradouro": "Rua das Acacias",
     "numero": "123",
     "bairro": "Centro",
     "municipio": "Vitoria",
@@ -108,7 +118,7 @@ Content-Type: application/json
     "cep": "29000-000"
   },
   "responsaveis": [
-    { "parentesco": "mae", "nome": "Mae Postman" }
+    { "parentesco": "mae", "nome": "Mariana Costa Almeida" }
   ],
   "necessidade_suporte": {
     "necessita": false,
@@ -120,9 +130,9 @@ Content-Type: application/json
 }
 ```
 
-Guarde `aluno.id` como `{{aluno_id}}` e o e-mail/senha para login do aluno.
+Guarde `aluno.id` como `{{aluno_id}}` e use e-mail/senha para login do aluno.
 
-## 5. Inscrever esse aluno na prova
+## 5. Inscrever O Aluno Na Prova
 
 ```http
 POST /simulados/{{simulado_id}}/inscricoes
@@ -134,7 +144,7 @@ Content-Type: application/json
 }
 ```
 
-## 6. Liberar e responder as 3 questoes
+## 6. Liberar E Responder As 3 Questoes
 
 Liberar:
 
@@ -150,7 +160,7 @@ POST /auth/login
 Content-Type: application/json
 
 {
-  "email": "aluno.postman@example.com",
+  "email": "rafael.almeida203@aluno.sedu.es.gov.br",
   "senha": "sedu123"
 }
 ```
@@ -161,18 +171,11 @@ Use o token do aluno:
 Authorization: Bearer {{aluno_token}}
 ```
 
-Para ver questoes e alternativas sem gabarito:
+Questoes e alternativas sem gabarito:
 
 ```http
 GET /simulados/{{simulado_id}}/questoes
 Authorization: Bearer {{aluno_token}}
-```
-
-Para conferir gabarito em teste de Postman, use admin:
-
-```http
-GET /simulados/{{simulado_id}}/preview
-Authorization: Bearer {{admin_token}}
 ```
 
 Responder cada questao:
@@ -190,7 +193,7 @@ Content-Type: application/json
 }
 ```
 
-## 7. Gerar resultado da prova
+## 7. Gerar Resultado Da Prova
 
 Resultado individual:
 
@@ -206,7 +209,7 @@ POST /simulados/{{simulado_id}}/finalizar
 Authorization: Bearer {{admin_token}}
 ```
 
-As acoes desse fluxo ficam persistidas em `acoes_auditoria` e podem ser vistas em:
+As acoes desse fluxo ficam persistidas em `acoes_auditoria`:
 
 ```http
 GET /auditoria?por_pagina=20
