@@ -109,6 +109,9 @@ const SERIE_COD_NOME: Record<string, string> = {
   "3_medio": "3ª série EM",
 };
 const MATERIA_COD_NOME: Record<string, string> = {
+  linguagens: "Linguagens",
+  ciencias_humanas: "Ciências Humanas",
+  ciencias_natureza: "Ciências da Natureza",
   portugues: "Português",
   matematica: "Matemática",
   ciencias: "Ciências",

@@ -2,6 +2,7 @@
 
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -54,6 +55,8 @@ import {
   obterNomeMaterias,
   obterNomeSerie,
 } from "@/lib/displays";
+import { baseProvasPorPerfil } from "@/lib/rotas-provas";
+import { useAuthStore } from "@/stores/auth-store";
 import type { AdaptacaoCognitiva } from "@/types";
 
 // ============================================================
@@ -92,6 +95,9 @@ export default function PaginaRelatorioSimulado({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const perfil = useAuthStore((s) => s.usuario?.perfil);
+  const pathname = usePathname();
+  const baseProvas = baseProvasPorPerfil(perfil, pathname);
   const { data, isLoading, isError, refetch } = useRelatorioSimulado(id);
   const [ordem, setOrdem] = useState<OrdemTabela>("nota_desc");
 
@@ -294,7 +300,7 @@ export default function PaginaRelatorioSimulado({
       <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-3">
           <Button variant="ghost" size="icon" asChild className="mt-1">
-            <Link href="/gestor/simulados" aria-label="Voltar para lista de simulados">
+            <Link href={baseProvas} aria-label="Voltar para lista de simulados">
               <ArrowLeft className="size-4" />
             </Link>
           </Button>
@@ -941,4 +947,3 @@ function baixarBlob(blob: Blob, nomeArquivo: string): void {
   document.body.removeChild(ancora);
   URL.revokeObjectURL(url);
 }
-

@@ -21,6 +21,7 @@ class StatusSimulado(enum.Enum):
     GERADO = "gerado"            # questões selecionadas, aguardando liberação
     LIBERADO = "liberado"        # alunos já podem responder
     FINALIZADO = "finalizado"    # encerrado; notas calculadas
+    CANCELADO = "cancelado"      # retirado do fluxo sem apagar resultados
 
 
 class StatusQuestao(enum.Enum):

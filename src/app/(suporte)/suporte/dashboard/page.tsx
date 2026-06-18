@@ -203,7 +203,7 @@ function categoriaPorNota(nota: number): CategoriaSemantica {
 }
 
 function CardAluno({ item }: { item: ItemDashboardSuporte }) {
-  const { aluno, turmaNome, ultimoResultado, emAndamento } = item;
+  const { aluno, turmaNome, ultimoResultado, emAndamento, totalSimulados } = item;
   const respondendo = emAndamento !== null;
 
   return (
@@ -283,9 +283,11 @@ function CardAluno({ item }: { item: ItemDashboardSuporte }) {
             </CategoryBadge>
           </div>
         ) : (
-          <p className="border-t border-border pt-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            Sem simulado finalizado ainda
-          </p>
+          <div className="border-t border-border pt-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            {totalSimulados > 0
+              ? `${totalSimulados} prova${totalSimulados > 1 ? "s" : ""} no histórico`
+              : "Sem simulado finalizado ainda"}
+          </div>
         )}
       </div>
     </Link>

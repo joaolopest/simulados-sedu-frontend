@@ -51,6 +51,8 @@ export interface AcaoAuditoria {
     | "gerar_simulado"
     | "montar_simulado"
     | "editar_simulado"
+    | "remover_simulado"
+    | "cancelar_simulado"
     | "liberar_simulado"
     | "finalizar_simulado"
     | "criar_usuario"

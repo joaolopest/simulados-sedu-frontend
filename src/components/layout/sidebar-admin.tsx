@@ -22,6 +22,7 @@ const ICONES: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   escolas: Building2,
   "criar-prova": FilePlus2,
+  provas: FilePlus2,
   questoes: FileQuestion,
   usuarios: Users,
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import {
   ArrowLeft,
@@ -18,6 +18,8 @@ import { useGestorSimulado } from "@/hooks/api/use-gestor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { baseProvasPorPerfil } from "@/lib/rotas-provas";
+import { useAuthStore } from "@/stores/auth-store";
 import {
   obterNomeMateria,
   obterNomeSerie,
@@ -46,17 +48,31 @@ const ROTULO_STATUS: Record<StatusSimulado, string> = {
 export default function PaginaDetalheSimulado() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const perfil = useAuthStore((s) => s.usuario?.perfil);
+  const pathname = usePathname();
   const id = params.id;
+  const baseProvas = baseProvasPorPerfil(perfil, pathname);
 
   const { data, isLoading, isError, refetch } = useGestorSimulado(id);
   const simulado = data?.simulado;
+  const parametros = simulado?.parametros;
+  const nomeSimulado = parametros?.nome?.trim() || `Simulado ${id}`;
+  const serieSimulado = parametros?.serie ?? "9_fundamental";
+  const materiasSimulado = parametros?.materias ?? [];
+  const conteudosSimulado = parametros?.conteudos ?? [];
+  const distribuicaoSimulado =
+    parametros?.distribuicao ?? { facil: 0, medio: 0, dificil: 0 };
+  const quantidadeQuestoes =
+    parametros?.quantidadeQuestoes ?? simulado?.questaoIds.length ?? 0;
+  const tempoLimiteMinutos = parametros?.tempoLimiteMinutos ?? 60;
+  const turmaId = parametros?.turmaId || "-";
 
   // Para finalizados, faz mais sentido ir direto pro relatório.
   useEffect(() => {
     if (simulado?.status === "finalizado") {
-      router.replace(`/gestor/simulados/${id}/relatorio`);
+      router.replace(`${baseProvas}/${id}/relatorio`);
     }
-  }, [simulado?.status, id, router]);
+  }, [simulado?.status, id, router, baseProvas]);
 
   const acoes = useMemo(() => {
     if (!simulado) return [];
@@ -67,7 +83,7 @@ export default function PaginaDetalheSimulado() {
       simulado.status === "em_andamento"
     ) {
       lista.push({
-        href: `/gestor/simulados/${id}/acompanhar`,
+        href: `${baseProvas}/${id}/acompanhar`,
         rotulo: "Acompanhar ao vivo",
         descricao: "Veja quem já entregou, em andamento ou ainda não acessou.",
       });
@@ -78,19 +94,19 @@ export default function PaginaDetalheSimulado() {
       simulado.status === "em_andamento"
     ) {
       lista.push({
-        href: `/gestor/simulados/${id}/relatorio`,
+        href: `${baseProvas}/${id}/relatorio`,
         rotulo: "Ver relatório",
         descricao: "Notas, distribuição, competências e recomendações.",
       });
     }
 
     return lista;
-  }, [simulado, id]);
+  }, [simulado, id, baseProvas]);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-10">
       <Link
-        href="/gestor/simulados"
+        href={baseProvas}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" />
@@ -121,7 +137,7 @@ export default function PaginaDetalheSimulado() {
               Simulado · {id}
             </p>
             <h1 className="mt-2 font-serif text-3xl tracking-tight md:text-4xl">
-              {simulado.parametros.nome}
+              {nomeSimulado}
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span
@@ -133,9 +149,9 @@ export default function PaginaDetalheSimulado() {
                 {ROTULO_STATUS[simulado.status]}
               </span>
               <Badge variant="outline" className="font-normal">
-                {obterNomeSerie(simulado.parametros.serie)}
+                {obterNomeSerie(serieSimulado)}
               </Badge>
-              {simulado.parametros.materias.map((m) => (
+              {materiasSimulado.map((m) => (
                 <Badge key={m} variant="outline" className="font-normal">
                   {obterNomeMateria(m)}
                 </Badge>
@@ -148,17 +164,17 @@ export default function PaginaDetalheSimulado() {
             <Metadado
               icone={ListChecks}
               rotulo="Questões"
-              valor={`${simulado.parametros.quantidadeQuestoes}`}
+              valor={`${quantidadeQuestoes}`}
             />
             <Metadado
               icone={Clock}
               rotulo="Tempo"
-              valor={`${simulado.parametros.tempoLimiteMinutos} min`}
+              valor={`${tempoLimiteMinutos} min`}
             />
             <Metadado
               icone={Users}
               rotulo="Turma"
-              valor={simulado.parametros.turmaId}
+              valor={turmaId}
             />
             <Metadado
               icone={Calendar}
@@ -168,13 +184,13 @@ export default function PaginaDetalheSimulado() {
           </section>
 
           {/* conteúdos */}
-          {simulado.parametros.conteudos.length > 0 && (
+          {conteudosSimulado.length > 0 && (
             <section className="mt-6 rounded-xl border border-border bg-card p-5">
               <h2 className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                 Conteúdos cobrados
               </h2>
               <ul className="mt-3 flex flex-wrap gap-2">
-                {simulado.parametros.conteudos.map((c) => (
+                {conteudosSimulado.map((c) => (
                   <li
                     key={c}
                     className="rounded-md border border-border bg-background px-3 py-1.5 text-xs"
@@ -197,7 +213,7 @@ export default function PaginaDetalheSimulado() {
                   Fácil
                 </p>
                 <p className="mt-1 font-sans text-lg font-medium tabular-nums">
-                  {simulado.parametros.distribuicao.facil}
+                  {distribuicaoSimulado.facil}
                 </p>
               </div>
               <div className="rounded-md bg-warning-muted px-3 py-2 text-center">
@@ -205,7 +221,7 @@ export default function PaginaDetalheSimulado() {
                   Médio
                 </p>
                 <p className="mt-1 font-sans text-lg font-medium tabular-nums">
-                  {simulado.parametros.distribuicao.medio}
+                  {distribuicaoSimulado.medio}
                 </p>
               </div>
               <div className="rounded-md bg-destructive-muted px-3 py-2 text-center">
@@ -213,7 +229,7 @@ export default function PaginaDetalheSimulado() {
                   Difícil
                 </p>
                 <p className="mt-1 font-sans text-lg font-medium tabular-nums">
-                  {simulado.parametros.distribuicao.dificil}
+                  {distribuicaoSimulado.dificil}
                 </p>
               </div>
             </div>

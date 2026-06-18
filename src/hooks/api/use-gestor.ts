@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { criar, obter } from "@/lib/api";
+import { atualizar, criar, obter, remover } from "@/lib/api";
 import type {
   AdaptacaoCognitiva,
   CuradoriaIA,
@@ -113,6 +113,36 @@ export function useCriarSimuladoRascunho() {
   return useMutation({
     mutationFn: (parametros: ParametrosSimulado) =>
       criar<Simulado>("/gestor/simulados", parametros),
+  });
+}
+
+export function useAtualizarSimulado() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; parametros: ParametrosSimulado }) =>
+      atualizar<Simulado>(`/gestor/simulados/${vars.id}`, {
+        parametros: vars.parametros,
+      }),
+    onSuccess: (simulado) => {
+      qc.invalidateQueries({ queryKey: ["gestor", "simulados"] });
+      qc.invalidateQueries({ queryKey: ["gestor", "dashboard"] });
+      qc.invalidateQueries({ queryKey: ["gestor", "simulado", simulado.id] });
+    },
+  });
+}
+
+export function useRemoverSimulado() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      remover<{ id: string; removido: boolean; cancelado: boolean }>(
+        `/gestor/simulados/${id}`,
+      ),
+    onSuccess: (_resultado, id) => {
+      qc.invalidateQueries({ queryKey: ["gestor", "simulados"] });
+      qc.invalidateQueries({ queryKey: ["gestor", "dashboard"] });
+      qc.invalidateQueries({ queryKey: ["gestor", "simulado", id] });
+    },
   });
 }
 

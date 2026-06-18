@@ -19,6 +19,9 @@ export function obterNomeAdaptacao(adaptacao: AdaptacaoCognitiva): string {
 }
 
 export const NOMES_MATERIA: Record<Materia, string> = {
+  linguagens: "Linguagens",
+  ciencias_humanas: "Ciências Humanas",
+  ciencias_natureza: "Ciências da Natureza",
   portugues: "Português",
   matematica: "Matemática",
   ciencias: "Ciências",

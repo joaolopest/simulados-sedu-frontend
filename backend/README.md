@@ -83,6 +83,13 @@ Com o banco configurado em `DATABASE_URL`, rode na raiz do projeto:
 backend\.venv\Scripts\python.exe backend\scripts\importar_enem_zip.py --zip C:\Projects\Dev\enem-api-main.zip
 ```
 
+Para reprocessar questoes ENEM ja importadas sem duplicar, limpando markdown/HTML
+do enunciado e atualizando etiquetas:
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\importar_enem_zip.py --zip C:\Projects\Dev\enem-api-main.zip --atualizar-existentes
+```
+
 O importador lê o ZIP externo, grava em `questoes`/`alternativas`, cria etiquetas ENEM faltantes, marca cada item com origem `enem:ano:questao:idioma` e registra auditoria em `acoes_auditoria`. A execução é idempotente.
 
 ## Acesso de Demonstração

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -11,28 +12,43 @@ import {
   Plus,
   Search,
   Sparkles,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import {
+  useRemoverSimulado,
   useGestorSimulados,
   useLiberarSimulado,
 } from "@/hooks/api/use-gestor";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatarDataBR } from "@/lib/utils";
 import { obterNomeMaterias, obterNomeSerie } from "@/lib/displays";
+import { baseProvasPorPerfil, novaProvaPorPerfil } from "@/lib/rotas-provas";
+import { useAuthStore } from "@/stores/auth-store";
 import type { Simulado, StatusSimulado } from "@/types";
 
 // ============================================================
 // Filtro de status
 // ============================================================
 
-type FiltroStatus = "todos" | StatusSimulado;
+type FiltroStatus = "todos" | "historico" | StatusSimulado;
 
 const FILTROS: { id: FiltroStatus; rotulo: string }[] = [
   { id: "todos", rotulo: "Todos" },
+  { id: "historico", rotulo: "Historico" },
   { id: "rascunho", rotulo: "Rascunho" },
   { id: "em_curadoria", rotulo: "Em curadoria" },
   { id: "liberado", rotulo: "Liberado" },
@@ -45,9 +61,13 @@ const FILTROS: { id: FiltroStatus; rotulo: string }[] = [
 // ============================================================
 
 export default function PaginaListaSimulados() {
+  const perfil = useAuthStore((s) => s.usuario?.perfil);
+  const pathname = usePathname();
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("todos");
   const [buscaInput, setBuscaInput] = useState("");
   const [buscaDebounced, setBuscaDebounced] = useState("");
+  const baseProvas = baseProvasPorPerfil(perfil, pathname);
+  const novaProva = novaProvaPorPerfil(perfil, undefined, pathname);
 
   // debounce de 300ms na busca
   useEffect(() => {
@@ -85,7 +105,7 @@ export default function PaginaListaSimulados() {
           </p>
         </div>
         <Button asChild size="lg" className="gap-2 self-start md:self-end">
-          <Link href="/gestor/simulados/novo">
+          <Link href={novaProva}>
             <Plus className="size-4" aria-hidden />
             Novo simulado
           </Link>
@@ -171,12 +191,17 @@ export default function PaginaListaSimulados() {
         ) : !data || data.length === 0 ? (
           <EstadoVazio
             comFiltro={filtroStatus !== "todos" || buscaDebounced.length > 0}
+            novaProvaHref={novaProva}
           />
         ) : (
           <ul className="space-y-3">
             {data.map((simulado) => (
               <li key={simulado.id}>
-                <CardSimulado simulado={simulado} />
+                <CardSimulado
+                  simulado={simulado}
+                  baseProvas={baseProvas}
+                  novaProvaHref={novaProvaPorPerfil(perfil, simulado.id, pathname)}
+                />
               </li>
             ))}
           </ul>
@@ -254,38 +279,61 @@ interface AcaoSecundaria {
   href: string;
 }
 
-function acaoSecundaria(simulado: Simulado): AcaoSecundaria | null {
+function acaoSecundaria(
+  simulado: Simulado,
+  baseProvas: string,
+  novaProvaHref: string,
+): AcaoSecundaria | null {
   switch (simulado.status) {
     case "rascunho":
     case "em_curadoria":
       return {
         rotulo: "Editar",
-        href: `/gestor/simulados/novo?id=${simulado.id}`,
+        href: novaProvaHref,
       };
     case "liberado":
     case "em_andamento":
       return {
         rotulo: "Acompanhar",
-        href: `/gestor/simulados/${simulado.id}/acompanhar`,
+        href: `${baseProvas}/${simulado.id}/acompanhar`,
       };
     case "finalizado":
       return {
         rotulo: "Relatório",
-        href: `/gestor/simulados/${simulado.id}/relatorio`,
+        href: `${baseProvas}/${simulado.id}/relatorio`,
       };
     case "cancelado":
       return null;
   }
 }
 
-function CardSimulado({ simulado }: { simulado: Simulado }) {
+function CardSimulado({
+  simulado,
+  baseProvas,
+  novaProvaHref,
+}: {
+  simulado: Simulado;
+  baseProvas: string;
+  novaProvaHref: string;
+}) {
   const { parametros, status } = simulado;
+  const [confirmacaoRemocaoAberta, setConfirmacaoRemocaoAberta] =
+    useState(false);
   const cores = classesStatus(status);
-  const acao = acaoSecundaria(simulado);
+  const acao = acaoSecundaria(simulado, baseProvas, novaProvaHref);
   const liberar = useLiberarSimulado();
+  const remover = useRemoverSimulado();
   const podeLiberar = status === "em_curadoria";
+  const preservaResultado =
+    status === "liberado" ||
+    status === "em_andamento" ||
+    status === "finalizado";
 
-  const tempoMin = parametros.tempoLimiteMinutos;
+  const nome = parametros.nome?.trim() || `Simulado ${simulado.id}`;
+  const materias = parametros.materias ?? [];
+  const quantidadeQuestoes =
+    parametros.quantidadeQuestoes ?? simulado.questaoIds.length ?? 0;
+  const tempoMin = parametros.tempoLimiteMinutos ?? 60;
   const tempoFormatado =
     tempoMin >= 60
       ? `${Math.floor(tempoMin / 60)}h${tempoMin % 60 > 0 ? ` ${tempoMin % 60}min` : ""}`
@@ -307,7 +355,22 @@ function CardSimulado({ simulado }: { simulado: Simulado }) {
     return Math.round(pct);
   }, [status, simulado.liberadoEm, simulado.criadoEm, parametros.encerraEm, tempoMin]);
 
+  async function removerSimulado() {
+    try {
+      const resultado = await remover.mutateAsync(simulado.id);
+      toast.success(
+        resultado.cancelado
+          ? "Simulado cancelado e historico preservado."
+          : "Simulado removido.",
+      );
+      setConfirmacaoRemocaoAberta(false);
+    } catch {
+      toast.error("Nao foi possivel remover este simulado.");
+    }
+  }
+
   return (
+    <>
     <article
       className={cn(
         "group rounded-xl border border-border bg-card p-5",
@@ -352,17 +415,17 @@ function CardSimulado({ simulado }: { simulado: Simulado }) {
           <h2
             className="mt-2.5 font-serif text-lg leading-tight tracking-tight md:text-xl"
           >
-            {parametros.nome}
+            {nome}
           </h2>
 
           {/* metadados */}
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground tabular-nums">
-            <Metadado>{obterNomeMaterias(parametros.materias)}</Metadado>
+            <Metadado>{obterNomeMaterias(materias)}</Metadado>
             <Sep />
             <Metadado>{obterNomeSerie(parametros.serie)}</Metadado>
             <Sep />
             <Metadado icone={FileText}>
-              {parametros.quantidadeQuestoes} questões
+              {quantidadeQuestoes} questões
             </Metadado>
             <Sep />
             <Metadado icone={Clock}>{tempoFormatado}</Metadado>
@@ -415,8 +478,8 @@ function CardSimulado({ simulado }: { simulado: Simulado }) {
           )}
           <Button variant="ghost" size="sm" asChild>
             <Link
-              href={`/gestor/simulados/${simulado.id}`}
-              aria-label={`Ver detalhes de ${parametros.nome}`}
+              href={`${baseProvas}/${simulado.id}`}
+              aria-label={`Ver detalhes de ${nome}`}
             >
               Ver
             </Link>
@@ -429,9 +492,70 @@ function CardSimulado({ simulado }: { simulado: Simulado }) {
               </Link>
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setConfirmacaoRemocaoAberta(true)}
+            disabled={remover.isPending}
+            aria-label={`Remover ${nome}`}
+            title="Remover simulado"
+          >
+            {remover.isPending && remover.variables === simulado.id ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Trash2 className="size-3.5" aria-hidden />
+            )}
+          </Button>
         </div>
       </div>
     </article>
+    <Dialog
+      open={confirmacaoRemocaoAberta}
+      onOpenChange={(aberto) => {
+        if (!remover.isPending) setConfirmacaoRemocaoAberta(aberto);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {preservaResultado ? "Cancelar simulado?" : "Remover simulado?"}
+          </DialogTitle>
+          <DialogDescription>
+            {preservaResultado
+              ? "Este simulado tem ou pode ter respostas. Ele sera cancelado e os resultados serao preservados no historico."
+              : "Este simulado ainda nao tem respostas vinculadas. A remocao nao pode ser desfeita."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-lg border border-border bg-muted/40 p-3">
+          <p className="line-clamp-2 text-sm font-medium text-foreground">
+            {nome}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            {ROTULOS_STATUS[status]} · {quantidadeQuestoes} questoes
+          </p>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <DialogClose asChild>
+            <Button variant="outline" disabled={remover.isPending}>
+              Manter
+            </Button>
+          </DialogClose>
+          <Button
+            variant="destructive"
+            onClick={removerSimulado}
+            disabled={remover.isPending}
+          >
+            {remover.isPending && remover.variables === simulado.id ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Trash2 className="size-4" aria-hidden />
+            )}
+            {preservaResultado ? "Cancelar simulado" : "Remover simulado"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -462,7 +586,13 @@ function Sep() {
 // Estado vazio
 // ============================================================
 
-function EstadoVazio({ comFiltro }: { comFiltro: boolean }) {
+function EstadoVazio({
+  comFiltro,
+  novaProvaHref,
+}: {
+  comFiltro: boolean;
+  novaProvaHref: string;
+}) {
   if (comFiltro) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
@@ -513,7 +643,7 @@ function EstadoVazio({ comFiltro }: { comFiltro: boolean }) {
           parâmetros que você definir.
         </p>
         <Button asChild className="mt-5 gap-2">
-          <Link href="/gestor/simulados/novo">
+          <Link href={novaProvaHref}>
             <Plus className="size-4" aria-hidden />
             Criar primeiro simulado
           </Link>

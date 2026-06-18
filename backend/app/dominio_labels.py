@@ -21,6 +21,9 @@ MAP_SERIE = {
 }
 
 MAP_MATERIA = {
+    "linguagens": "Linguagens",
+    "ciencias_humanas": "Ciências Humanas",
+    "ciencias_natureza": "Ciências da Natureza",
     "portugues": "Português",
     "matematica": "Matemática",
     "ciencias": "Ciências",

@@ -17,6 +17,9 @@ export type SerieEscolar =
 export type Materia =
   | "portugues"
   | "matematica"
+  | "linguagens"
+  | "ciencias_humanas"
+  | "ciencias_natureza"
   | "ciencias"
   | "historia"
   | "geografia"

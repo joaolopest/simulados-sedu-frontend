@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   Check,
   CheckCircle2,
   Loader2,
@@ -40,7 +42,11 @@ import {
   useMontarProva,
   useProvaTurmas,
 } from "@/hooks/api/use-provas";
-import type { TurmaEnriquecida } from "@/hooks/api/use-gestor";
+import {
+  useAtualizarSimulado,
+  useGestorSimulado,
+  type TurmaEnriquecida,
+} from "@/hooks/api/use-gestor";
 import { useAdminQuestoes, useCriarQuestao } from "@/hooks/api/use-admin";
 import { useAuthStore } from "@/stores/auth-store";
 import {
@@ -50,6 +56,7 @@ import {
   obterNomeSerie,
 } from "@/lib/displays";
 import { cn, gerarIdAleatorio } from "@/lib/utils";
+import { baseProvasPorPerfil } from "@/lib/rotas-provas";
 import type {
   Materia,
   NivelDificuldade,
@@ -64,7 +71,10 @@ const NIVEIS = Object.entries(NOMES_NIVEL) as [NivelDificuldade, string][];
 
 export function ConstrutorProva() {
   const perfil = useAuthStore((s) => s.usuario?.perfil);
+  const pathname = usePathname();
   const { data: turmas = [], isLoading: turmasCarregando } = useProvaTurmas();
+  const [idEdicao, setIdEdicao] = useState<string | undefined>(undefined);
+  const [edicaoCarregada, setEdicaoCarregada] = useState(false);
   const [nome, setNome] = useState("");
   const [turmaId, setTurmaId] = useState("");
   const [busca, setBusca] = useState("");
@@ -82,14 +92,33 @@ export function ConstrutorProva() {
   });
 
   const criarRascunho = useCriarProvaRascunho();
+  const atualizarSimulado = useAtualizarSimulado();
   const montar = useMontarProva();
   const liberar = useLiberarProva();
+  const { data: dadosEdicao, isLoading: carregandoEdicao } =
+    useGestorSimulado(idEdicao);
   const destinoInicio =
     perfil === "admin"
       ? "/admin/dashboard"
       : perfil === "gestor"
         ? "/gestor/dashboard"
         : "/professor/dashboard";
+  const destinoProvas = baseProvasPorPerfil(perfil, pathname);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setIdEdicao(params.get("id") ?? undefined);
+    setEdicaoCarregada(false);
+  }, []);
+
+  useEffect(() => {
+    if (!dadosEdicao?.simulado || edicaoCarregada) return;
+    const parametros = dadosEdicao.simulado.parametros;
+    setNome(parametros.nome?.trim() || `Simulado ${dadosEdicao.simulado.id}`);
+    setTurmaId(parametros.turmaId || "");
+    setSelecionadas(dadosEdicao.questoes);
+    setEdicaoCarregada(true);
+  }, [dadosEdicao, edicaoCarregada]);
 
   const idsSelecionados = useMemo(
     () => new Set(selecionadas.map((q) => q.id)),
@@ -103,7 +132,10 @@ export function ConstrutorProva() {
   const podeSalvar =
     nome.trim().length >= 3 && Boolean(turmaId) && selecionadas.length > 0;
   const salvando =
-    criarRascunho.isPending || montar.isPending || liberar.isPending;
+    criarRascunho.isPending ||
+    atualizarSimulado.isPending ||
+    montar.isPending ||
+    liberar.isPending;
 
   function adicionar(q: Questao) {
     setSelecionadas((s) => [...s, q]);
@@ -115,27 +147,36 @@ export function ConstrutorProva() {
   async function salvar(liberarAgora: boolean) {
     if (!podeSalvar || salvando) return;
     const turma = turmas.find((t) => t.id === turmaId);
+    const distribuicao = calcularDistribuicao(selecionadas);
     const parametros: ParametrosSimulado = {
       nome: nome.trim(),
       turmaId,
       serie: (turma?.serie || "9_fundamental") as SerieEscolar,
-      materias: [],
-      conteudos: [],
+      materias: valoresUnicos(selecionadas.map((q) => q.materia)),
+      conteudos: valoresUnicos(
+        selecionadas.map((q) => q.conteudo).filter(Boolean),
+      ),
       quantidadeQuestoes: selecionadas.length,
-      distribuicao: { facil: 0, medio: 100, dificil: 0 },
+      distribuicao,
       adaptacoesAceitas: [],
       tempoLimiteMinutos: 60,
       liberadoEm: new Date().toISOString().slice(0, 10),
     };
     try {
-      const sim = await criarRascunho.mutateAsync(parametros);
+      const sim = idEdicao
+        ? await atualizarSimulado.mutateAsync({ id: idEdicao, parametros })
+        : await criarRascunho.mutateAsync(parametros);
       await montar.mutateAsync({
         simuladoId: sim.id,
         questaoIds: selecionadas.map((q) => q.id),
       });
       if (liberarAgora) await liberar.mutateAsync(sim.id);
       toast.success(
-        liberarAgora ? "Prova criada e liberada!" : "Prova salva como rascunho!",
+        liberarAgora
+          ? "Prova salva e liberada!"
+          : idEdicao
+            ? "Prova atualizada!"
+            : "Prova salva como rascunho!",
       );
       setResultado({ total: selecionadas.length, liberada: liberarAgora });
     } catch {
@@ -144,6 +185,9 @@ export function ConstrutorProva() {
   }
 
   function recomecar() {
+    window.history.replaceState(null, "", window.location.pathname);
+    setIdEdicao(undefined);
+    setEdicaoCarregada(false);
     setNome("");
     setTurmaId("");
     setBusca("");
@@ -171,7 +215,9 @@ export function ConstrutorProva() {
             Criar outra prova
           </Button>
           <Button asChild>
-            <Link href={destinoInicio}>Voltar ao início</Link>
+            <Link href={idEdicao ? destinoProvas : destinoInicio}>
+              {idEdicao ? "Voltar para provas" : "Voltar ao início"}
+            </Link>
           </Button>
         </div>
       </div>
@@ -181,17 +227,29 @@ export function ConstrutorProva() {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 pb-28 md:px-6 md:py-10">
       <header className="space-y-1.5">
+        <Button variant="ghost" size="sm" asChild className="-ml-2 w-fit gap-1.5">
+          <Link href={destinoProvas}>
+            <ArrowLeft className="size-4" aria-hidden />
+            Voltar para provas
+          </Link>
+        </Button>
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
           Construtor de prova
         </p>
         <h1 className="font-serif text-2xl text-foreground md:text-3xl">
-          Criar prova completa
+          {idEdicao ? "Editar prova" : "Criar prova completa"}
         </h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           Escolha questões do banco e, se faltar alguma, crie na hora — ela
           entra direto na prova.
         </p>
       </header>
+
+      {idEdicao && carregandoEdicao && (
+        <div className="mt-6 rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          Carregando dados da prova...
+        </div>
+      )}
 
       {/* Dados da prova */}
       <section className="mt-6 grid gap-4 rounded-xl border border-border bg-card p-5 md:grid-cols-2 md:p-6">
@@ -363,6 +421,9 @@ export function ConstrutorProva() {
             {podeSalvar ? "pronto para salvar" : "preencha nome, turma e 1+ questão"}
           </p>
           <div className="flex flex-1 justify-end gap-2 sm:flex-none">
+            <Button variant="ghost" asChild>
+              <Link href={destinoProvas}>Cancelar</Link>
+            </Button>
             <Button
               variant="outline"
               disabled={!podeSalvar || salvando}
@@ -680,4 +741,21 @@ function agruparPorEscola(
   return Array.from(grupos.entries()).sort(([a], [b]) =>
     a.localeCompare(b, "pt-BR"),
   );
+}
+
+function valoresUnicos<T extends string>(valores: T[]): T[] {
+  return Array.from(new Set(valores));
+}
+
+function calcularDistribuicao(questoes: Questao[]): ParametrosSimulado["distribuicao"] {
+  const total = questoes.length || 1;
+  const faceis = questoes.filter((q) => q.nivel === "facil").length;
+  const medias = questoes.filter((q) => q.nivel === "medio").length;
+  const facil = Math.round((faceis / total) * 100);
+  const medio = Math.round((medias / total) * 100);
+  return {
+    facil,
+    medio,
+    dificil: Math.max(0, 100 - facil - medio),
+  };
 }

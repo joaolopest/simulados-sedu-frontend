@@ -13,6 +13,7 @@ export interface ItemDashboardSuporte {
   turmaNome: string;
   ultimoResultado: ResultadoSimulado | null;
   emAndamento: SimuladoEmAndamento | null;
+  totalSimulados: number;
 }
 
 export interface RespostaDashboardSuporte {

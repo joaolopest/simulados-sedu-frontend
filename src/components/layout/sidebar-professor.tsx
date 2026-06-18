@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 const ICONES: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   "nova-prova": FilePlus2,
+  provas: FilePlus2,
   questoes: ListChecks,
 };
 

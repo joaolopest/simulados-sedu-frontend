@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -81,6 +81,8 @@ import {
   obterNomeSerie,
 } from "@/lib/displays";
 import { cn, formatarDataBR } from "@/lib/utils";
+import { baseProvasPorPerfil } from "@/lib/rotas-provas";
+import { useAuthStore } from "@/stores/auth-store";
 import type {
   AdaptacaoCognitiva,
   Materia,
@@ -180,6 +182,10 @@ type ValoresPasso2 = z.infer<typeof schemaPasso2>;
 
 export default function PaginaNovoSimulado() {
   const roteador = useRouter();
+  const perfil = useAuthStore((s) => s.usuario?.perfil);
+  const pathname = usePathname();
+  const [idEdicao, setIdEdicao] = useState<string | undefined>(undefined);
+  const baseProvas = baseProvasPorPerfil(perfil, pathname);
 
   const [passoAtual, setPassoAtual] = useState<NumeroPasso>(1);
   const [valoresPasso1, setValoresPasso1] = useState<ValoresPasso1 | null>(
@@ -198,8 +204,14 @@ export default function PaginaNovoSimulado() {
   // Confirmação modal
   const [modalAberto, setModalAberto] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setIdEdicao(params.get("id") ?? undefined);
+  }, []);
+
   // Hooks API
   const { data: turmas = [], isLoading: turmasCarregando } = useGestorTurmas();
+  const { data: dadosEdicao } = useGestorSimulado(idEdicao ?? undefined);
   const mutationCriarRascunho = useCriarSimuladoRascunho();
   const mutationCurar = useCurarSimulado();
   const mutationLiberar = useLiberarSimulado();
@@ -225,6 +237,34 @@ export default function PaginaNovoSimulado() {
     () => turmas.find((t) => t.id === valoresPasso1?.turmaId),
     [turmas, valoresPasso1?.turmaId],
   );
+
+  useEffect(() => {
+    if (!dadosEdicao?.simulado || simuladoId) return;
+    const simulado = dadosEdicao.simulado;
+    const parametros = simulado.parametros;
+    const tempo = TEMPOS_DISPONIVEIS.includes(
+      parametros.tempoLimiteMinutos as 30 | 60 | 90 | 120,
+    )
+      ? parametros.tempoLimiteMinutos
+      : 60;
+    setSimuladoId(simulado.id);
+    setValoresPasso1({
+      nome: parametros.nome,
+      turmaId: parametros.turmaId,
+      serie: parametros.serie,
+      materias: parametros.materias,
+      dataLiberacao:
+        parametros.liberadoEm?.slice(0, 10) ||
+        new Date().toISOString().slice(0, 10),
+      tempoLimiteMinutos: tempo,
+    });
+    setValoresPasso2({
+      conteudos: parametros.conteudos,
+      quantidadeQuestoes: parametros.quantidadeQuestoes,
+      distribuicao: parametros.distribuicao,
+      adaptacoesAceitas: parametros.adaptacoesAceitas,
+    });
+  }, [dadosEdicao?.simulado, simuladoId]);
 
   const podeAvancar = useMemo(() => {
     if (passoAtual === 3) return Boolean(respostaCuradoria) || seguirSemCuradoria;
@@ -313,7 +353,7 @@ export default function PaginaNovoSimulado() {
       await mutationLiberar.mutateAsync(simuladoId);
       toast.success("Simulado liberado para a turma");
       setModalAberto(false);
-      roteador.push(`/gestor/simulados/${simuladoId}/acompanhar`);
+      roteador.push(`${baseProvas}/${simuladoId}/acompanhar`);
     } catch {
       toast.error("Não foi possível liberar agora. Tente novamente.");
     }
@@ -335,7 +375,7 @@ export default function PaginaNovoSimulado() {
             </h1>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/gestor/simulados">
+            <Link href={baseProvas}>
               <X className="size-4" aria-hidden />
               Cancelar
             </Link>

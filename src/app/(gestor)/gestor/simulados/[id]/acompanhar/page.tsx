@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { use, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -33,6 +34,8 @@ import {
   gerarIniciais,
 } from "@/lib/utils";
 import { obterNomeMaterias, obterNomeSerie } from "@/lib/displays";
+import { baseProvasPorPerfil } from "@/lib/rotas-provas";
+import { useAuthStore } from "@/stores/auth-store";
 import type { StatusAlunoSimulado } from "@/types";
 
 // ============================================================
@@ -72,6 +75,9 @@ export default function PaginaAcompanharSimulado({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const perfil = useAuthStore((s) => s.usuario?.perfil);
+  const pathname = usePathname();
+  const baseProvas = baseProvasPorPerfil(perfil, pathname);
   const consulta = useAcompanharSimulado(id);
   const dados = consulta.data;
 
@@ -120,6 +126,7 @@ export default function PaginaAcompanharSimulado({
   if (consulta.isError || !dados) {
     return (
       <ErroEstado
+        voltarHref={baseProvas}
         mensagem={
           consulta.isError
             ? "Não foi possível carregar o acompanhamento."
@@ -140,7 +147,7 @@ export default function PaginaAcompanharSimulado({
           <div className="space-y-1">
             <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               <Link
-                href="/gestor/simulados"
+                href={baseProvas}
                 className="inline-flex items-center gap-1 hover:text-foreground"
               >
                 <ArrowLeft className="size-3" aria-hidden />
@@ -518,7 +525,13 @@ function Carregando() {
   );
 }
 
-function ErroEstado({ mensagem }: { mensagem: string }) {
+function ErroEstado({
+  mensagem,
+  voltarHref,
+}: {
+  mensagem: string;
+  voltarHref: string;
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center px-6">
       <div className="max-w-md space-y-4 text-center">
@@ -532,7 +545,7 @@ function ErroEstado({ mensagem }: { mensagem: string }) {
         </h1>
         <p className="text-sm text-muted-foreground">{mensagem}</p>
         <Button asChild variant="outline">
-          <Link href="/gestor/simulados">
+          <Link href={voltarHref}>
             <ArrowLeft className="size-4" aria-hidden />
             Voltar para simulados
           </Link>

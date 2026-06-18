@@ -23,6 +23,9 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         ALTER TYPE perfilusuario ADD VALUE IF NOT EXISTS 'PROFESSOR'
         """,
         """
+        ALTER TYPE statussimulado ADD VALUE IF NOT EXISTS 'CANCELADO'
+        """,
+        """
         ALTER TABLE usuarios
         ADD COLUMN IF NOT EXISTS escola_id INTEGER REFERENCES escolas(id)
         """,
@@ -242,6 +245,15 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         UPDATE simulados
         SET titulo = 'Diagnostica 9A'
         WHERE titulo = 'Diagnostica Demo - 9A'
+        """,
+        """
+        UPDATE simulados
+        SET parametros_json = jsonb_set(
+            parametros_json::jsonb,
+            '{nome}',
+            '"Diagnostica 9A"'::jsonb
+        )::json
+        WHERE parametros_json->>'nome' = 'Diagnostica Demo - 9A'
         """,
         """
         UPDATE escolas

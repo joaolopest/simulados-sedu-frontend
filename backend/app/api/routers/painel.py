@@ -24,7 +24,7 @@ from app.api.permissoes import (
     usuario_pode_ver_questao,
 )
 from app.api.routers.questoes import _serializar as _serializar_questao
-from app.enums import PerfilUsuario, StatusQuestao
+from app.enums import PerfilUsuario, StatusQuestao, StatusSimulado
 from app.services import auditoria_service, questao_service, simulado_service
 from app.models import (
     Aluno,
@@ -52,12 +52,192 @@ _SIM_STATUS_FRONT = {
     "liberado": "liberado",
     "FINALIZADO": "finalizado",
     "finalizado": "finalizado",
+    "CANCELADO": "cancelado",
+    "cancelado": "cancelado",
 }
 
 
 def _status_simulado_front(valor) -> str:
     raw = getattr(valor, "value", valor)
     return _SIM_STATUS_FRONT.get(raw, "rascunho")
+
+
+_SERIE_NOME_PARA_CODE = {v: k for k, v in labels.MAP_SERIE.items()}
+_MATERIA_NOME_PARA_CODE = {v: k for k, v in labels.MAP_MATERIA.items()}
+_NIVEIS_FRONT = {"facil", "medio", "dificil"}
+
+
+def _code_por_nome(mapa: dict[str, str], reverso: dict[str, str], valor) -> str | None:
+    if valor is None:
+        return None
+    raw = getattr(valor, "value", valor)
+    texto = str(raw).strip()
+    if not texto:
+        return None
+    if texto in mapa:
+        return texto
+    if texto in reverso:
+        return reverso[texto]
+    normalizado = texto.casefold()
+    for code, nome in mapa.items():
+        if code.casefold() == normalizado or nome.casefold() == normalizado:
+            return code
+    return None
+
+
+def _serie_code(valor) -> str | None:
+    return _code_por_nome(labels.MAP_SERIE, _SERIE_NOME_PARA_CODE, valor)
+
+
+def _materia_code(valor) -> str | None:
+    return _code_por_nome(labels.MAP_MATERIA, _MATERIA_NOME_PARA_CODE, valor)
+
+
+def _nivel_code_front(valor) -> str | None:
+    if valor is None:
+        return None
+    raw = getattr(valor, "value", valor)
+    texto = str(raw).strip()
+    if not texto:
+        return None
+    if texto in _NIVEIS_FRONT:
+        return texto
+    code = labels.nivel_code(texto)
+    if code in _NIVEIS_FRONT:
+        return code
+    normalizado = code.casefold()
+    for nivel in _NIVEIS_FRONT:
+        if nivel.casefold() == normalizado:
+            return nivel
+    for code_front, nome in labels.MAP_NIVEL.items():
+        if nome.casefold() == texto.casefold():
+            return code_front
+    return None
+
+
+def _lista_unica(valores) -> list:
+    if valores is None:
+        return []
+    if not isinstance(valores, list):
+        valores = [valores]
+    out = []
+    vistos = set()
+    for valor in valores:
+        if valor is None:
+            continue
+        chave = str(valor).strip()
+        if not chave or chave in vistos:
+            continue
+        out.append(valor)
+        vistos.add(chave)
+    return out
+
+
+def _inteiro_positivo(valor, padrao: int) -> int:
+    try:
+        numero = int(valor)
+    except (TypeError, ValueError):
+        return padrao
+    return numero if numero >= 0 else padrao
+
+
+def _normalizar_distribuicao(parametros: dict, simulado: Simulado) -> dict[str, int]:
+    dados = parametros.get("distribuicao") if isinstance(parametros, dict) else None
+    normalizada = {"facil": 0, "medio": 0, "dificil": 0}
+    if isinstance(dados, dict):
+        valores: list[float] = []
+        bruta = {"facil": 0.0, "medio": 0.0, "dificil": 0.0}
+        for chave, valor in dados.items():
+            code = _nivel_code_front(chave)
+            if code not in bruta:
+                continue
+            try:
+                numero = float(valor)
+            except (TypeError, ValueError):
+                numero = 0
+            bruta[code] = max(0.0, numero)
+            valores.append(numero)
+        if valores and all(0 <= v <= 1 for v in valores):
+            normalizada = {k: round(v * 100) for k, v in bruta.items()}
+        else:
+            normalizada = {k: round(v) for k, v in bruta.items()}
+        if any(normalizada.values()):
+            return normalizada
+
+    contagem = {"facil": 0, "medio": 0, "dificil": 0}
+    for sq in simulado.questoes:
+        if not sq.questao or not sq.questao.nivel:
+            continue
+        code = _nivel_code_front(sq.questao.nivel.nome)
+        if code in contagem:
+            contagem[code] += 1
+    total = sum(contagem.values())
+    if total == 0:
+        return normalizada
+    facil = round((contagem["facil"] / total) * 100)
+    medio = round((contagem["medio"] / total) * 100)
+    return {"facil": facil, "medio": medio, "dificil": max(0, 100 - facil - medio)}
+
+
+def _normalizar_parametros_simulado(s: Simulado) -> dict:
+    p = s.parametros_json if isinstance(s.parametros_json, dict) else {}
+    questoes = [
+        sq.questao
+        for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
+        if sq.questao
+    ]
+
+    serie = _serie_code(p.get("serie"))
+    if serie is None and s.turma and s.turma.serie:
+        serie = _serie_code(s.turma.serie.nome)
+    if serie is None and questoes:
+        serie = _serie_code(questoes[0].serie.nome if questoes[0].serie else None)
+
+    materias_raw = p.get("materias") or p.get("materia")
+    materias = [_materia_code(m) for m in _lista_unica(materias_raw)]
+    if not any(materias):
+        materias = [_materia_code(q.materia.nome if q.materia else None) for q in questoes]
+    materias = [m for m in _lista_unica(materias) if m]
+
+    conteudos_raw = p.get("conteudos") or p.get("conteudo")
+    conteudos = [str(c).strip() for c in _lista_unica(conteudos_raw) if str(c).strip()]
+    if not conteudos:
+        conteudos = [q.conteudo.nome for q in questoes if q.conteudo and q.conteudo.nome]
+        conteudos = [str(c).strip() for c in _lista_unica(conteudos) if str(c).strip()]
+
+    turma_id = p.get("turmaId", s.turma_id)
+    quantidade = _inteiro_positivo(
+        p.get("quantidadeQuestoes", p.get("quantidade")),
+        len(questoes),
+    )
+    tempo = _inteiro_positivo(
+        p.get("tempoLimiteMinutos", p.get("duracaoMinutos", p.get("tempo"))),
+        60,
+    )
+    liberado_em = p.get("liberadoEm")
+    if not liberado_em and _status_simulado_front(s.status) in (
+        "liberado",
+        "em_andamento",
+        "finalizado",
+    ):
+        liberado_em = s.criado_em.date().isoformat() if s.criado_em else None
+
+    normalizado = {
+        "nome": str(p.get("nome") or s.titulo or f"Simulado {s.id}").strip(),
+        "turmaId": str(turma_id or ""),
+        "serie": serie or "9_fundamental",
+        "materias": materias,
+        "conteudos": conteudos,
+        "quantidadeQuestoes": quantidade,
+        "distribuicao": _normalizar_distribuicao(p, s),
+        "adaptacoesAceitas": p.get("adaptacoesAceitas") or p.get("adaptacoes") or [],
+        "tempoLimiteMinutos": tempo,
+    }
+    if liberado_em:
+        normalizado["liberadoEm"] = liberado_em
+    if p.get("encerraEm"):
+        normalizado["encerraEm"] = p.get("encerraEm")
+    return normalizado
 
 
 def _serializar_simulado(s: Simulado) -> dict:
@@ -68,7 +248,7 @@ def _serializar_simulado(s: Simulado) -> dict:
     criado = s.criado_em.isoformat() if s.criado_em else None
     return {
         "id": str(s.id),
-        "parametros": s.parametros_json or {},
+        "parametros": _normalizar_parametros_simulado(s),
         "questaoIds": questao_ids,
         "status": _status_simulado_front(s.status),
         "criadoPor": str(s.gestor_id),
@@ -216,11 +396,15 @@ def _questao_permitida_para_prova(sessao: Session, usuario: Usuario, questao: Qu
     return usuario_pode_ver_questao(sessao, usuario, questao)
 
 
+def _aluno_tem_suporte_ou_adaptacao(aluno: Aluno) -> bool:
+    return bool(aluno.necessita_suporte or aluno.perfil_cognitivo)
+
+
 def _aluno_visivel_suporte(usuario: Usuario, aluno: Aluno) -> bool:
+    if not _aluno_tem_suporte_ou_adaptacao(aluno):
+        return False
     if usuario.perfil == PerfilUsuario.ADMIN:
         return True
-    if not aluno.necessita_suporte:
-        return False
     escola_id = aluno.turma.escola_id if aluno.turma else None
     return usuario.escola_id is not None and escola_id == usuario.escola_id
 
@@ -400,7 +584,7 @@ def aluno_historico(
     dados = []
     for r in resultados:
         sim = sessao.get(Simulado, int(r["simuladoId"]))
-        parametros = sim.parametros_json if sim else {}
+        parametros = _normalizar_parametros_simulado(sim) if sim else {}
         materias = parametros.get("materias") or []
         dados.append(
             {
@@ -776,7 +960,10 @@ def gestor_simulados(
     sims = _simulados_do_usuario(sessao, usuario)
     dados = [_serializar_simulado(s) for s in sims]
     if status:
-        dados = [d for d in dados if d["status"] == status]
+        if status == "historico":
+            dados = [d for d in dados if d["status"] in ("finalizado", "cancelado")]
+        else:
+            dados = [d for d in dados if d["status"] == status]
     if busca:
         termo = busca.lower()
         dados = [d for d in dados if termo in d["parametros"].get("nome", "").lower()]
@@ -908,9 +1095,7 @@ def suporte_dashboard(
     usuario: Usuario = Depends(admin_gestor_suporte),
     sessao: Session = Depends(get_session),
 ) -> dict:
-    alunos = sessao.scalars(
-        select(Aluno).where(Aluno.necessita_suporte.is_(True))
-    ).all()
+    alunos = sessao.scalars(select(Aluno)).all()
     dados = []
     for a in alunos:
         if not a.usuario:
@@ -924,6 +1109,7 @@ def suporte_dashboard(
                 "turmaNome": a.turma.nome if a.turma else "—",
                 "ultimoResultado": res[0] if res else None,
                 "emAndamento": None,
+                "totalSimulados": len(res),
             }
         )
     return {
@@ -1008,6 +1194,103 @@ def gestor_simulado_detalhe(
     return {"simulado": _serializar_simulado(sim), "questoes": _questoes_do_simulado(sim)}
 
 
+@router.patch("/gestor/simulados/{simulado_id}", dependencies=[Depends(montadores_prova)])
+def atualizar_simulado(
+    simulado_id: int,
+    corpo: dict,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+    if _status_simulado_front(sim.status) not in ("rascunho", "em_curadoria"):
+        raise HTTPException(
+            status_code=409,
+            detail="Apenas simulados ainda nao liberados podem ser editados.",
+        )
+
+    parametros = corpo.get("parametros") if isinstance(corpo.get("parametros"), dict) else corpo
+    if not isinstance(parametros, dict):
+        raise HTTPException(status_code=422, detail="Informe os parametros do simulado.")
+
+    turma_id_raw = parametros.get("turmaId", sim.turma_id)
+    try:
+        turma_id = int(turma_id_raw) if turma_id_raw is not None else None
+    except (TypeError, ValueError):
+        turma_id = None
+    _exigir_turma_permitida(sessao, usuario, turma_id)
+
+    atuais = sim.parametros_json or {}
+    novos_parametros = {**atuais, **parametros}
+    sim.parametros_json = novos_parametros
+    sim.turma_id = turma_id
+    sim.titulo = novos_parametros.get("nome") or sim.titulo
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="editar_simulado",
+        alvo_tipo="simulado",
+        alvo_id=sim.id,
+        detalhes=f"Editou parametros do simulado {sim.titulo}.",
+        request=request,
+    )
+    sessao.commit()
+    sessao.refresh(sim)
+    return _serializar_simulado(sim)
+
+
+@router.delete("/gestor/simulados/{simulado_id}", dependencies=[Depends(montadores_prova)])
+def remover_simulado(
+    simulado_id: int,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+
+    total_respostas = (
+        sessao.scalar(
+            select(func.count(Resposta.id)).where(Resposta.simulado_id == sim.id)
+        )
+        or 0
+    )
+    status_front = _status_simulado_front(sim.status)
+    deve_preservar = total_respostas > 0 or status_front in ("liberado", "em_andamento", "finalizado")
+    titulo = sim.titulo
+    if deve_preservar:
+        sim.status = StatusSimulado.CANCELADO
+        auditoria_service.registrar(
+            sessao,
+            usuario=usuario,
+            tipo="cancelar_simulado",
+            alvo_tipo="simulado",
+            alvo_id=sim.id,
+            detalhes=f"Cancelou simulado {titulo} preservando respostas/resultados.",
+            request=request,
+        )
+        sessao.commit()
+        return {"id": str(sim.id), "removido": False, "cancelado": True}
+
+    sessao.delete(sim)
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="remover_simulado",
+        alvo_tipo="simulado",
+        alvo_id=simulado_id,
+        detalhes=f"Removeu simulado {titulo} sem respostas vinculadas.",
+        request=request,
+    )
+    sessao.commit()
+    return {"id": str(simulado_id), "removido": True, "cancelado": False}
+
+
 @router.post(
     "/gestor/simulados/{simulado_id}/curar", dependencies=[Depends(montadores_prova)]
 )
@@ -1024,6 +1307,16 @@ def curar_simulado(
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_simulado(sessao, usuario, sim)
     p = corpo.get("parametros", {})
+    if isinstance(p, dict) and p:
+        turma_id_raw = p.get("turmaId", sim.turma_id)
+        try:
+            turma_id = int(turma_id_raw) if turma_id_raw is not None else None
+        except (TypeError, ValueError):
+            turma_id = None
+        _exigir_turma_permitida(sessao, usuario, turma_id)
+        sim.turma_id = turma_id
+        sim.parametros_json = {**(sim.parametros_json or {}), **p}
+        sim.titulo = sim.parametros_json.get("nome") or sim.titulo
     total = int(p.get("quantidadeQuestoes", 10) or 10)
     alvo = p.get("distribuicao", {}) or {}
 
@@ -1074,7 +1367,7 @@ def curar_simulado(
                 alternativas_ordem=[],
             )
         )
-    sim.status = "GERADO"
+    sim.status = StatusSimulado.GERADO
     sessao.commit()
 
     n = len(selecionadas) or 1
@@ -1123,6 +1416,17 @@ def montar_prova(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_simulado(sessao, usuario, sim)
+    parametros = corpo.get("parametros")
+    if isinstance(parametros, dict) and parametros:
+        turma_id_raw = parametros.get("turmaId", sim.turma_id)
+        try:
+            turma_id = int(turma_id_raw) if turma_id_raw is not None else None
+        except (TypeError, ValueError):
+            turma_id = None
+        _exigir_turma_permitida(sessao, usuario, turma_id)
+        sim.turma_id = turma_id
+        sim.parametros_json = {**(sim.parametros_json or {}), **parametros}
+        sim.titulo = sim.parametros_json.get("nome") or sim.titulo
     ids_raw = corpo.get("questaoIds") or []
     vistos: set[int] = set()
     questoes_ok: list[int] = []
@@ -1154,7 +1458,7 @@ def montar_prova(
                 alternativas_ordem=[],
             )
         )
-    sim.status = "GERADO"
+    sim.status = StatusSimulado.GERADO
     auditoria_service.registrar(
         sessao,
         usuario=usuario,
@@ -1186,7 +1490,7 @@ def liberar_simulado(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_simulado(sessao, usuario, sim)
-    sim.status = "LIBERADO"
+    sim.status = StatusSimulado.LIBERADO
     auditoria_service.registrar(
         sessao,
         usuario=usuario,
@@ -1256,7 +1560,7 @@ def acompanhar_simulado(
         "simulado": _serializar_simulado(sim),
         "alunos": alunos,
         "contagens": contagens,
-        "tempoLimiteMinutos": (sim.parametros_json or {}).get("tempoLimiteMinutos", 0),
+        "tempoLimiteMinutos": _normalizar_parametros_simulado(sim).get("tempoLimiteMinutos", 0),
     }
 
 
@@ -1431,7 +1735,7 @@ def aluno_iniciar(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_aluno_simulado(sessao, aluno, sim)
-    tempo = int((sim.parametros_json or {}).get("tempoLimiteMinutos", 60)) * 60
+    tempo = int(_normalizar_parametros_simulado(sim).get("tempoLimiteMinutos", 60)) * 60
     agora = datetime.now(timezone.utc).isoformat()
     return {
         "simuladoId": str(sim.id),

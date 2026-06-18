@@ -14,6 +14,7 @@ export type Permissao =
   | "questoes.excluir.qualquer"
   | "questoes.revisao.solicitar"
   | "questoes.revisao.resolver"
+  | "provas.ver"
   | "provas.criar"
   | "provas.liberar"
   | "escolas.gerenciar"
@@ -87,6 +88,7 @@ export const PERMISSOES_POR_PERFIL = {
     "questoes.arquivar.escola",
     "questoes.excluir.qualquer",
     "questoes.revisao.resolver",
+    "provas.ver",
     "provas.criar",
     "provas.liberar",
     "escolas.gerenciar",
@@ -106,6 +108,7 @@ export const PERMISSOES_POR_PERFIL = {
     "questoes.publicar.escola",
     "questoes.arquivar.escola",
     "questoes.revisao.solicitar",
+    "provas.ver",
     "provas.criar",
     "provas.liberar",
     "turmas.ver",
@@ -122,6 +125,7 @@ export const PERMISSOES_POR_PERFIL = {
     "questoes.criar",
     "questoes.editar.proprias",
     "questoes.revisao.solicitar",
+    "provas.ver",
     "provas.criar",
     "notificacoes.ver",
     "perfil.ver",
@@ -166,10 +170,11 @@ export const NAVEGACAO_POR_PERFIL = {
       matchPrefix: true,
     },
     {
-      id: "criar-prova",
-      href: "/admin/provas/nova",
-      rotulo: "Criar prova",
-      permissao: "provas.criar",
+      id: "provas",
+      href: "/admin/provas",
+      rotulo: "Provas",
+      permissao: "provas.ver",
+      matchPrefix: true,
     },
     {
       id: "escolas",
@@ -201,7 +206,7 @@ export const NAVEGACAO_POR_PERFIL = {
       id: "simulados",
       href: "/gestor/simulados",
       rotulo: "Simulados",
-      permissao: "provas.criar",
+      permissao: "provas.ver",
       matchPrefix: true,
     },
     {
@@ -238,10 +243,11 @@ export const NAVEGACAO_POR_PERFIL = {
       matchPrefix: true,
     },
     {
-      id: "nova-prova",
-      href: "/professor/provas/nova",
-      rotulo: "Nova prova",
-      permissao: "provas.criar",
+      id: "provas",
+      href: "/professor/provas",
+      rotulo: "Provas",
+      permissao: "provas.ver",
+      matchPrefix: true,
     },
   ],
   suporte: [
