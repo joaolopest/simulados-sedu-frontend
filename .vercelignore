@@ -1,0 +1,24 @@
+# Segredos — NUNCA subir (use Environment Variables no painel do Vercel)
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/seduc_questoes.db
+
+# Dependências e artefatos — o Vercel reconstrói
+node_modules
+.next
+out
+backend/.venv
+**/__pycache__/
+**/*.pyc
+
+# Lixo / não necessário no build
+.git
+.claude
+codex-rollback
+docs
+postman
+*.log

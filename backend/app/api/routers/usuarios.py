@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_session
 from app.api.permissoes import so_admin
 from app.enums import PerfilUsuario
-from app.models import Escola, Usuario
+from app.models import Aluno, Escola, Turma, Usuario
 from app.services import auditoria_service
 from app.services import auth_service
 
@@ -90,7 +90,13 @@ def listar_usuarios(
 
     total = q.count()
     itens = (
-        q.order_by(Usuario.nome)
+        q.options(
+            selectinload(Usuario.escola),
+            selectinload(Usuario.aluno)
+            .selectinload(Aluno.turma)
+            .selectinload(Turma.escola),
+        )
+        .order_by(Usuario.nome)
         .offset((pagina - 1) * por_pagina)
         .limit(por_pagina)
         .all()

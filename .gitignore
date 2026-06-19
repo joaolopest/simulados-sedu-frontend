@@ -56,3 +56,6 @@ pnpm-lock.yaml
 /backups/
 *.dump
 *.backup
+
+# Postman (ferramenta de teste local — não é necessária pra rodar a app)
+/postman/

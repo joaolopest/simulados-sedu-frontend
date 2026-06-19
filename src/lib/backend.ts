@@ -7,9 +7,19 @@
 
 import type { ErroApi } from "@/types";
 
-// 127.0.0.1 (não "localhost") evita o mismatch IPv6/IPv4 no Windows: o uvicorn
-// escuta em IPv4 e "localhost" pode resolver primeiro para ::1.
-const BASE = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
+// Resolve a base do backend conforme o ambiente:
+//  1) BACKEND_URL explícito  -> Docker compose (http://backend:8000) ou override.
+//  2) Vercel (multi-serviço) -> o FastAPI fica no MESMO deployment, sob /_/backend
+//     (ver vercel.json experimentalServices). VERCEL_URL = host do deployment atual.
+//  3) Local (dev/uvicorn)    -> 127.0.0.1 (não "localhost") evita mismatch IPv6/IPv4
+//     no Windows: o uvicorn escuta em IPv4 e "localhost" pode resolver para ::1.
+function resolverBaseBackend(): string {
+  if (process.env.BACKEND_URL) return process.env.BACKEND_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/_/backend`;
+  return "http://127.0.0.1:8000";
+}
+
+const BASE = resolverBaseBackend();
 
 type Metodo = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 

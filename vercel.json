@@ -1,0 +1,14 @@
+{
+  "regions": ["gru1"],
+  "experimentalServices": {
+    "frontend": {
+      "routePrefix": "/",
+      "framework": "nextjs"
+    },
+    "backend": {
+      "root": "backend",
+      "entrypoint": "app.api.main:app",
+      "routePrefix": "/_/backend"
+    }
+  }
+}
