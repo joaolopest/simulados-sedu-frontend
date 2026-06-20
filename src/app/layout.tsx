@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Lora, JetBrains_Mono } from "next/font/google";
 import { ProvedoresApp } from "@/components/provedores/provedores-app";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const fonteSans = Inter({
@@ -44,6 +45,7 @@ export default function LayoutRaiz({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <ProvedoresApp>{children}</ProvedoresApp>
+        <SpeedInsights />
       </body>
     </html>
   );

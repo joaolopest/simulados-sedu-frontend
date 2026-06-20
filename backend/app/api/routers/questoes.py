@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_session
 from app.api.permissoes import (
@@ -139,16 +139,33 @@ def listar_questoes(
     if status:
         q = q.filter(Questao.status.in_([_status_enum(s) for s in status]))
 
-    itens = q.order_by(Questao.id).all()
-    # adaptaÃ§Ãµes ficam em JSON â€” filtra em memÃ³ria (volume pequeno).
     if adaptacao:
+        # Filtro por adaptação vive em JSON — filtra em memória (caminho menos comum).
+        itens = q.order_by(Questao.id).all()
         itens = [
             it for it in itens if any(a in (it.adaptacoes or []) for a in adaptacao)
         ]
+        total = len(itens)
+        inicio = (pagina - 1) * por_pagina
+        pagina_itens = itens[inicio : inicio + por_pagina]
+    else:
+        # Caminho rápido: conta + pagina no banco (offset/limit) e carrega só a
+        # página com eager-load das relações (sem N+1, sem trazer tudo).
+        total = q.count()
+        pagina_itens = (
+            q.options(
+                selectinload(Questao.serie),
+                selectinload(Questao.materia),
+                selectinload(Questao.conteudo),
+                selectinload(Questao.nivel),
+                selectinload(Questao.alternativas),
+            )
+            .order_by(Questao.id)
+            .offset((pagina - 1) * por_pagina)
+            .limit(por_pagina)
+            .all()
+        )
 
-    total = len(itens)
-    inicio = (pagina - 1) * por_pagina
-    pagina_itens = itens[inicio : inicio + por_pagina]
     return {
         "total": total,
         "pagina": pagina,

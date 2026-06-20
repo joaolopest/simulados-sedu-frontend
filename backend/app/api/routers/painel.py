@@ -273,7 +273,13 @@ def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> d
     erros = respondidas - acertos
     em_branco = max(0, total_questoes - respondidas)
     nota = round((acertos / total_questoes) * 10, 1) if total_questoes else 0.0
-    ultima = max((r.respondida_em for r in respostas if r.respondida_em), default=None)
+    _tempos = [r.respondida_em for r in respostas if r.respondida_em]
+    primeira = min(_tempos) if _tempos else None
+    ultima = max(_tempos) if _tempos else None
+    # Tempo real gasto = da 1ª à última resposta (autosave grava cada uma na hora).
+    tempo_total = (
+        int((ultima - primeira).total_seconds()) if primeira and ultima else 0
+    )
     return {
         "id": f"res_{aluno_id}_{simulado.id}",
         "simuladoId": str(simulado.id),
@@ -293,8 +299,8 @@ def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> d
         "acertos": acertos,
         "erros": erros,
         "emBranco": em_branco,
-        "tempoTotalSegundos": 0,
-        "iniciadoEm": ultima.isoformat() if ultima else None,
+        "tempoTotalSegundos": tempo_total,
+        "iniciadoEm": primeira.isoformat() if primeira else None,
         "finalizadoEm": ultima.isoformat() if ultima else None,
         "desempenhoPorCompetencia": [],
     }
@@ -1594,7 +1600,7 @@ def relatorio_simulado(
                 "acertos": r["acertos"],
                 "erros": r["erros"],
                 "emBranco": r["emBranco"],
-                "tempoTotalSegundos": 0,
+                "tempoTotalSegundos": r["tempoTotalSegundos"],
                 "emRisco": a.necessita_suporte,
             }
         )

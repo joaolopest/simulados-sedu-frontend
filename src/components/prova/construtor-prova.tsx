@@ -78,6 +78,10 @@ export function ConstrutorProva() {
   const [nome, setNome] = useState("");
   const [turmaId, setTurmaId] = useState("");
   const [busca, setBusca] = useState("");
+  const [filtroSerie, setFiltroSerie] = useState("todos");
+  const [filtroMateria, setFiltroMateria] = useState("todos");
+  const [filtroNivel, setFiltroNivel] = useState("todos");
+  const [paginaBanco, setPaginaBanco] = useState(1);
   const [selecionadas, setSelecionadas] = useState<Questao[]>([]);
   const [dialogAberto, setDialogAberto] = useState(false);
   const [resultado, setResultado] = useState<{
@@ -87,9 +91,15 @@ export function ConstrutorProva() {
 
   const bancoQuery = useAdminQuestoes({
     busca: busca.trim() || undefined,
+    serie: filtroSerie !== "todos" ? [filtroSerie as SerieEscolar] : undefined,
+    materia: filtroMateria !== "todos" ? [filtroMateria as Materia] : undefined,
+    nivel: filtroNivel !== "todos" ? [filtroNivel as NivelDificuldade] : undefined,
     status: ["publicada"],
-    porPagina: 50,
+    pagina: paginaBanco,
+    porPagina: 20,
   });
+  const metaBanco = bancoQuery.data?.meta;
+  const totalPaginasBanco = metaBanco?.totalPaginas ?? 1;
 
   const criarRascunho = useCriarProvaRascunho();
   const atualizarSimulado = useAtualizarSimulado();
@@ -119,6 +129,11 @@ export function ConstrutorProva() {
     setSelecionadas(dadosEdicao.questoes);
     setEdicaoCarregada(true);
   }, [dadosEdicao, edicaoCarregada]);
+
+  // volta pra página 1 quando muda a busca ou qualquer filtro do banco
+  useEffect(() => {
+    setPaginaBanco(1);
+  }, [busca, filtroSerie, filtroMateria, filtroNivel]);
 
   const idsSelecionados = useMemo(
     () => new Set(selecionadas.map((q) => q.id)),
@@ -324,6 +339,65 @@ export function ConstrutorProva() {
               className="pl-8"
             />
           </div>
+          {/* Filtros (mesmos das questões normais): série · matéria · nível */}
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <Select value={filtroSerie} onValueChange={setFiltroSerie}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Série" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas as séries</SelectItem>
+                {SERIES.map(([v, r]) => (
+                  <SelectItem key={v} value={v}>
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filtroMateria} onValueChange={setFiltroMateria}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Matéria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todas as matérias</SelectItem>
+                {MATERIAS.map(([v, r]) => (
+                  <SelectItem key={v} value={v}>
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filtroNivel} onValueChange={setFiltroNivel}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Nível" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os níveis</SelectItem>
+                {NIVEIS.map(([v, r]) => (
+                  <SelectItem key={v} value={v}>
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(busca ||
+            filtroSerie !== "todos" ||
+            filtroMateria !== "todos" ||
+            filtroNivel !== "todos") && (
+            <button
+              type="button"
+              onClick={() => {
+                setBusca("");
+                setFiltroSerie("todos");
+                setFiltroMateria("todos");
+                setFiltroNivel("todos");
+              }}
+              className="mt-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
+            >
+              Limpar filtros
+            </button>
+          )}
           <ul className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
             {bancoQuery.isLoading && (
               <li className="py-8 text-center text-sm text-muted-foreground">
@@ -361,6 +435,36 @@ export function ConstrutorProva() {
               </li>
             ))}
           </ul>
+          {totalPaginasBanco > 1 && (
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={paginaBanco <= 1 || bancoQuery.isFetching}
+                onClick={() => setPaginaBanco((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                Página {metaBanco?.pagina ?? paginaBanco} de {totalPaginasBanco}
+                <span className="ml-1 hidden sm:inline">
+                  ({metaBanco?.total ?? 0} questões)
+                </span>
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={
+                  paginaBanco >= totalPaginasBanco || bancoQuery.isFetching
+                }
+                onClick={() => setPaginaBanco((p) => p + 1)}
+              >
+                Próxima
+              </Button>
+            </div>
+          )}
         </section>
 
         {/* Prova */}

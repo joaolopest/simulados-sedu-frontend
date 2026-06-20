@@ -121,6 +121,8 @@ export function proxy(request: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    // Exclui arquivos estáticos (qualquer caminho com extensão, ex.: /imagens/*.svg)
+    // além de api e assets internos do Next — evita o gating redirecionar imagens.
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };

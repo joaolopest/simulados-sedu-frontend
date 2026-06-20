@@ -44,6 +44,15 @@ export default function PaginaResultadoSimulado({
   const { id } = use(params);
   const { data, isLoading, isError } = useResultadoAluno(id);
 
+  // Hooks SEMPRE no topo (antes de qualquer return) — Regras dos Hooks.
+  const respostasPorQuestao: Record<string, RespostaQuestao> = useMemo(
+    () =>
+      Object.fromEntries(
+        (data?.resultado.respostas ?? []).map((r) => [r.questaoId, r]),
+      ),
+    [data],
+  );
+
   // dispara confete quando nota >= 7
   useEffect(() => {
     if (!data) return;
@@ -96,11 +105,6 @@ export default function PaginaResultadoSimulado({
   }
 
   const { simulado, resultado, questoes, mensagem, sugestoes } = data;
-  const respostasPorQuestao: Record<string, RespostaQuestao> = useMemo(
-    () =>
-      Object.fromEntries(resultado.respostas.map((r) => [r.questaoId, r])),
-    [resultado.respostas],
-  );
 
   const corNota =
     resultado.notaFinal >= 7
