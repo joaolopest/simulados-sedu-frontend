@@ -260,14 +260,18 @@ def _serializar_simulado(s: Simulado) -> dict:
 
 def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> dict | None:
     """Calcula o ResultadoSimulado do aluno a partir das respostas no banco."""
+    ids_questoes = {sq.questao_id for sq in simulado.questoes}
     respostas = sessao.scalars(
         select(Resposta).where(
             Resposta.aluno_id == aluno_id, Resposta.simulado_id == simulado.id
         )
     ).all()
+    # Conta só respostas de questões que AINDA estão na prova — evita contagem
+    # inflada de erros se uma questão foi removida da prova após ser respondida.
+    respostas = [r for r in respostas if r.questao_id in ids_questoes]
     if not respostas:
         return None
-    total_questoes = len(simulado.questoes)
+    total_questoes = len(ids_questoes)
     acertos = sum(1 for r in respostas if r.correta)
     respondidas = len(respostas)
     erros = respondidas - acertos

@@ -66,6 +66,15 @@ def login(
     usuario = sessao.scalar(select(Usuario).where(Usuario.email == req.email))
     if usuario is None or not auth_service.verificar_senha(req.senha, usuario.senha_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    # Barra contas inativas já no login (em vez de deixar logar e dar erro depois).
+    if not usuario.ativo:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "codigo": "CONTA_INATIVA",
+                "mensagem": "Sua conta está inativa. Procure a secretaria da sua escola.",
+            },
+        )
     usuario.ultimo_acesso = datetime.now(timezone.utc)
     auditoria_service.registrar(
         sessao,

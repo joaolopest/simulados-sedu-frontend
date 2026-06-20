@@ -50,7 +50,12 @@ export function useAdminDashboard() {
   return useQuery({
     queryKey: ["admin", "dashboard"],
     queryFn: () => obter<RespostaDashboardAdmin>("/admin/dashboard"),
-    staleTime: 30_000,
+    // Painel administrativo: sempre busca números atuais ao abrir/focar a aba,
+    // pra refletir em (quase) tempo real questões/provas/escolas recém-criadas.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 }
 
