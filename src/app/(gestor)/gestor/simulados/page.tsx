@@ -4,13 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   ArrowRight,
+  Ban,
+  BarChart3,
   Calendar,
   Clock,
+  Eye,
   FileText,
   Loader2,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Search,
+  Send,
   Sparkles,
   Trash2,
   type LucideIcon,
@@ -32,6 +39,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatarDataBR } from "@/lib/utils";
@@ -85,6 +99,11 @@ export default function PaginaListaSimulados() {
 
   const { data, isLoading, isError, refetch, isFetching } =
     useGestorSimulados(filtros);
+
+  // A aba "Todos" não lista cancelados — eles aparecem em "Histórico".
+  const visiveis = (data ?? []).filter((s) =>
+    filtroStatus === "todos" ? s.status !== "cancelado" : true,
+  );
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-10">
@@ -188,14 +207,14 @@ export default function PaginaListaSimulados() {
               </Button>
             </div>
           </div>
-        ) : !data || data.length === 0 ? (
+        ) : visiveis.length === 0 ? (
           <EstadoVazio
             comFiltro={filtroStatus !== "todos" || buscaDebounced.length > 0}
             novaProvaHref={novaProva}
           />
         ) : (
           <ul className="space-y-3">
-            {data.map((simulado) => (
+            {visiveis.map((simulado) => (
               <li key={simulado.id}>
                 <CardSimulado
                   simulado={simulado}
@@ -319,6 +338,9 @@ function CardSimulado({
   const { parametros, status } = simulado;
   const [confirmacaoRemocaoAberta, setConfirmacaoRemocaoAberta] =
     useState(false);
+  const [modoRemocao, setModoRemocao] = useState<
+    "cancelar" | "remover" | "excluir"
+  >("remover");
   const cores = classesStatus(status);
   const acao = acaoSecundaria(simulado, baseProvas, novaProvaHref);
   const liberar = useLiberarSimulado();
@@ -355,17 +377,23 @@ function CardSimulado({
     return Math.round(pct);
   }, [status, simulado.liberadoEm, simulado.criadoEm, parametros.encerraEm, tempoMin]);
 
+  function abrirRemocao(modo: "cancelar" | "remover" | "excluir") {
+    setModoRemocao(modo);
+    setConfirmacaoRemocaoAberta(true);
+  }
+
   async function removerSimulado() {
+    const forcar = modoRemocao === "excluir";
     try {
-      const resultado = await remover.mutateAsync(simulado.id);
+      const resultado = await remover.mutateAsync({ id: simulado.id, forcar });
       toast.success(
         resultado.cancelado
-          ? "Simulado cancelado e historico preservado."
-          : "Simulado removido.",
+          ? "Simulado cancelado — resultados preservados no histórico."
+          : "Simulado excluído.",
       );
       setConfirmacaoRemocaoAberta(false);
     } catch {
-      toast.error("Nao foi possivel remover este simulado.");
+      toast.error("Não foi possível concluir a ação.");
     }
   }
 
@@ -463,27 +491,21 @@ function CardSimulado({
         </div>
 
         {/* ações */}
-        <div className="flex shrink-0 flex-wrap items-center gap-2 md:flex-nowrap">
+        <div className="flex shrink-0 items-center gap-2">
           {podeLiberar && (
             <Button
               size="sm"
               onClick={() => liberar.mutate(simulado.id)}
               disabled={liberar.isPending}
             >
-              {liberar.isPending && liberar.variables === simulado.id ? (
+              {liberar.isPending ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              ) : null}
+              ) : (
+                <Send className="size-3.5" aria-hidden />
+              )}
               Liberar
             </Button>
           )}
-          <Button variant="ghost" size="sm" asChild>
-            <Link
-              href={`${baseProvas}/${simulado.id}`}
-              aria-label={`Ver detalhes de ${nome}`}
-            >
-              Ver
-            </Link>
-          </Button>
           {acao && (
             <Button variant="outline" size="sm" asChild>
               <Link href={acao.href} className="gap-1">
@@ -492,20 +514,97 @@ function CardSimulado({
               </Link>
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setConfirmacaoRemocaoAberta(true)}
-            disabled={remover.isPending}
-            aria-label={`Remover ${nome}`}
-            title="Remover simulado"
-          >
-            {remover.isPending && remover.variables === simulado.id ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            ) : (
-              <Trash2 className="size-3.5" aria-hidden />
-            )}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Mais ações de ${nome}`}
+                disabled={remover.isPending}
+              >
+                {remover.isPending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <MoreHorizontal className="size-4" aria-hidden />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem asChild>
+                <Link href={`${baseProvas}/${simulado.id}`}>
+                  <Eye className="size-4" aria-hidden />
+                  Ver detalhes
+                </Link>
+              </DropdownMenuItem>
+              {(status === "rascunho" || status === "em_curadoria") && (
+                <DropdownMenuItem asChild>
+                  <Link href={novaProvaHref}>
+                    <Pencil className="size-4" aria-hidden />
+                    Editar
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {podeLiberar && (
+                <DropdownMenuItem
+                  onClick={() => liberar.mutate(simulado.id)}
+                  disabled={liberar.isPending}
+                >
+                  <Send className="size-4" aria-hidden />
+                  Liberar
+                </DropdownMenuItem>
+              )}
+              {(status === "liberado" || status === "em_andamento") && (
+                <DropdownMenuItem asChild>
+                  <Link href={`${baseProvas}/${simulado.id}/acompanhar`}>
+                    <Activity className="size-4" aria-hidden />
+                    Acompanhar
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {(status === "liberado" ||
+                status === "em_andamento" ||
+                status === "finalizado") && (
+                <DropdownMenuItem asChild>
+                  <Link href={`${baseProvas}/${simulado.id}/relatorio`}>
+                    <BarChart3 className="size-4" aria-hidden />
+                    Relatório
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              {status === "cancelado" ? (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => abrirRemocao("excluir")}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Excluir definitivamente
+                </DropdownMenuItem>
+              ) : preservaResultado ? (
+                <>
+                  <DropdownMenuItem onClick={() => abrirRemocao("cancelar")}>
+                    <Ban className="size-4" aria-hidden />
+                    Cancelar simulado
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => abrirRemocao("excluir")}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                    Excluir definitivamente
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => abrirRemocao("remover")}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Remover
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </article>
@@ -518,12 +617,18 @@ function CardSimulado({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {preservaResultado ? "Cancelar simulado?" : "Remover simulado?"}
+            {modoRemocao === "excluir"
+              ? "Excluir definitivamente?"
+              : modoRemocao === "cancelar"
+                ? "Cancelar simulado?"
+                : "Remover simulado?"}
           </DialogTitle>
           <DialogDescription>
-            {preservaResultado
-              ? "Este simulado tem ou pode ter respostas. Ele sera cancelado e os resultados serao preservados no historico."
-              : "Este simulado ainda nao tem respostas vinculadas. A remocao nao pode ser desfeita."}
+            {modoRemocao === "excluir"
+              ? "Isso apaga o simulado e TODOS os resultados/respostas vinculados. Não dá pra desfazer."
+              : modoRemocao === "cancelar"
+                ? "O simulado será cancelado e os resultados ficam preservados no histórico."
+                : "Este simulado ainda não tem respostas vinculadas. A remoção não pode ser desfeita."}
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-lg border border-border bg-muted/40 p-3">
@@ -545,12 +650,16 @@ function CardSimulado({
             onClick={removerSimulado}
             disabled={remover.isPending}
           >
-            {remover.isPending && remover.variables === simulado.id ? (
+            {remover.isPending ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : (
               <Trash2 className="size-4" aria-hidden />
             )}
-            {preservaResultado ? "Cancelar simulado" : "Remover simulado"}
+            {modoRemocao === "excluir"
+              ? "Excluir tudo"
+              : modoRemocao === "cancelar"
+                ? "Cancelar simulado"
+                : "Remover"}
           </Button>
         </DialogFooter>
       </DialogContent>

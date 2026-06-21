@@ -70,10 +70,11 @@ export async function DELETE(
 ): Promise<NextResponse> {
   const token = tokenDaRequisicao(request);
   const { id } = await params;
+  const forcar = new URL(request.url).searchParams.get("forcar") === "true";
   try {
     const resp = await backendFetch<Record<string, unknown>>(
       `/gestor/simulados/${id}`,
-      { method: "DELETE", token },
+      { method: "DELETE", token, query: forcar ? { forcar: "true" } : undefined },
     );
     return NextResponse.json(resp);
   } catch (erro) {

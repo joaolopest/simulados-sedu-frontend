@@ -134,14 +134,14 @@ export function useAtualizarSimulado() {
 export function useRemoverSimulado() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: (vars: { id: string; forcar?: boolean }) =>
       remover<{ id: string; removido: boolean; cancelado: boolean }>(
-        `/gestor/simulados/${id}`,
+        `/gestor/simulados/${vars.id}${vars.forcar ? "?forcar=true" : ""}`,
       ),
-    onSuccess: (_resultado, id) => {
+    onSuccess: (_resultado, vars) => {
       qc.invalidateQueries({ queryKey: ["gestor", "simulados"] });
       qc.invalidateQueries({ queryKey: ["gestor", "dashboard"] });
-      qc.invalidateQueries({ queryKey: ["gestor", "simulado", id] });
+      qc.invalidateQueries({ queryKey: ["gestor", "simulado", vars.id] });
     },
   });
 }

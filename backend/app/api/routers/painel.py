@@ -8,7 +8,7 @@ de IA) vêm zerados/vazios e estão sinalizados.
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,7 @@ from app.models import (
     Aluno,
     Alternativa,
     Escola,
+    GuiaEstudo,
     Materia,
     Nivel,
     Questao,
@@ -1256,6 +1257,9 @@ def atualizar_simulado(
 def remover_simulado(
     simulado_id: int,
     request: Request,
+    forcar: bool = Query(
+        False, description="Exclui de vez, mesmo com respostas (apaga resultados)."
+    ),
     usuario: Usuario = Depends(montadores_prova),
     sessao: Session = Depends(get_session),
 ) -> dict:
@@ -1271,7 +1275,11 @@ def remover_simulado(
         or 0
     )
     status_front = _status_simulado_front(sim.status)
-    deve_preservar = total_respostas > 0 or status_front in ("liberado", "em_andamento", "finalizado")
+    # forcar=True ignora a preservação e apaga tudo de vez (decisão do admin/gestor).
+    deve_preservar = (not forcar) and (
+        total_respostas > 0
+        or status_front in ("liberado", "em_andamento", "finalizado")
+    )
     titulo = sim.titulo
     if deve_preservar:
         sim.status = StatusSimulado.CANCELADO
@@ -1287,6 +1295,18 @@ def remover_simulado(
         sessao.commit()
         return {"id": str(sim.id), "removido": False, "cancelado": True}
 
+    # Hard delete. Se forçado, limpa antes as FKs sem cascade: respostas (apaga)
+    # e guias de estudo (desvincula), senão o delete viola a constraint.
+    if forcar:
+        sessao.query(Resposta).filter(Resposta.simulado_id == sim.id).delete(
+            synchronize_session=False
+        )
+        sessao.query(GuiaEstudo).filter(
+            GuiaEstudo.gerado_a_partir_simulado_id == sim.id
+        ).update(
+            {GuiaEstudo.gerado_a_partir_simulado_id: None},
+            synchronize_session=False,
+        )
     sessao.delete(sim)
     auditoria_service.registrar(
         sessao,
@@ -1294,7 +1314,11 @@ def remover_simulado(
         tipo="remover_simulado",
         alvo_tipo="simulado",
         alvo_id=simulado_id,
-        detalhes=f"Removeu simulado {titulo} sem respostas vinculadas.",
+        detalhes=(
+            f"Excluiu definitivamente o simulado {titulo}."
+            if forcar
+            else f"Removeu simulado {titulo} sem respostas vinculadas."
+        ),
         request=request,
     )
     sessao.commit()
