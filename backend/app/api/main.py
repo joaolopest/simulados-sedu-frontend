@@ -4,8 +4,11 @@ A lógica de negócio fica nas camadas de domínio, serviços e rotas específic
 Este módulo apenas monta a aplicação HTTP, registra routers e expõe healthcheck.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routers import (
     aluno,
@@ -46,6 +49,57 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def tratar_erro_validacao(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    campos = [
+        {
+            "campo": ".".join(str(parte) for parte in erro.get("loc", [])),
+            "mensagem": erro.get("msg", "Valor inválido."),
+            "tipo": erro.get("type", "validacao"),
+        }
+        for erro in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={
+            "codigo": "VALIDACAO",
+            "mensagem": "Dados inválidos. Confira os campos enviados.",
+            "detalhes": campos,
+        },
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def tratar_erro_http(
+    _request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        codigo = str(detail.get("codigo", "ERRO_HTTP"))
+        mensagem = str(detail.get("mensagem", detail.get("detail", "Erro na requisição.")))
+        detalhes = detail.get("detalhes")
+    else:
+        codigo = "ERRO_HTTP"
+        mensagem = str(detail or "Erro na requisição.")
+        detalhes = None
+
+    if exc.status_code == 401:
+        codigo = "NAO_AUTENTICADO"
+    elif exc.status_code == 403:
+        codigo = "SEM_PERMISSAO"
+    elif exc.status_code == 404:
+        codigo = "NAO_ENCONTRADO"
+    elif exc.status_code == 409:
+        codigo = "CONFLITO"
+
+    content = {"codigo": codigo, "mensagem": mensagem}
+    if detalhes is not None:
+        content["detalhes"] = detalhes
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 app.include_router(auth.router)
 app.include_router(cadastro.router)

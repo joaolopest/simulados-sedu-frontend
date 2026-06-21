@@ -1,4 +1,4 @@
-import type { Materia, NivelDificuldade, SerieEscolar } from "./questao";
+import type { Materia, SerieEscolar } from "./questao";
 import type { AdaptacaoCognitiva } from "./usuario";
 
 export type StatusSimulado =

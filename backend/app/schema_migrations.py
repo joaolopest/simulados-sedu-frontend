@@ -158,6 +158,10 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         ON simulado_inscricoes (aluno_id)
         """,
         """
+        ALTER TABLE respostas
+        ADD COLUMN IF NOT EXISTS tempo_gasto_segundos INTEGER NOT NULL DEFAULT 0
+        """,
+        """
         UPDATE usuarios
         SET nome = CASE email
             WHEN 'admin@sedu.se.gov.br' THEN 'Renata Albuquerque Cardoso'

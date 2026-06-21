@@ -116,23 +116,30 @@ export function ConstrutorProva() {
   const destinoProvas = baseProvasPorPerfil(perfil, pathname);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setIdEdicao(params.get("id") ?? undefined);
-    setEdicaoCarregada(false);
+    const idTimeout = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      setIdEdicao(params.get("id") ?? undefined);
+      setEdicaoCarregada(false);
+    }, 0);
+    return () => window.clearTimeout(idTimeout);
   }, []);
 
   useEffect(() => {
     if (!dadosEdicao?.simulado || edicaoCarregada) return;
     const parametros = dadosEdicao.simulado.parametros;
-    setNome(parametros.nome?.trim() || `Simulado ${dadosEdicao.simulado.id}`);
-    setTurmaId(parametros.turmaId || "");
-    setSelecionadas(dadosEdicao.questoes);
-    setEdicaoCarregada(true);
+    const idTimeout = window.setTimeout(() => {
+      setNome(parametros.nome?.trim() || `Simulado ${dadosEdicao.simulado.id}`);
+      setTurmaId(parametros.turmaId || "");
+      setSelecionadas(dadosEdicao.questoes);
+      setEdicaoCarregada(true);
+    }, 0);
+    return () => window.clearTimeout(idTimeout);
   }, [dadosEdicao, edicaoCarregada]);
 
   // volta pra página 1 quando muda a busca ou qualquer filtro do banco
   useEffect(() => {
-    setPaginaBanco(1);
+    const idTimeout = window.setTimeout(() => setPaginaBanco(1), 0);
+    return () => window.clearTimeout(idTimeout);
   }, [busca, filtroSerie, filtroMateria, filtroNivel]);
 
   const idsSelecionados = useMemo(

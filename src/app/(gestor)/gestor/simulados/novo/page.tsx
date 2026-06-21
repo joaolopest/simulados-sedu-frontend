@@ -205,8 +205,11 @@ export default function PaginaNovoSimulado() {
   const [modalAberto, setModalAberto] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setIdEdicao(params.get("id") ?? undefined);
+    const idTimeout = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      setIdEdicao(params.get("id") ?? undefined);
+    }, 0);
+    return () => window.clearTimeout(idTimeout);
   }, []);
 
   // Hooks API
@@ -247,23 +250,26 @@ export default function PaginaNovoSimulado() {
     )
       ? parametros.tempoLimiteMinutos
       : 60;
-    setSimuladoId(simulado.id);
-    setValoresPasso1({
-      nome: parametros.nome,
-      turmaId: parametros.turmaId,
-      serie: parametros.serie,
-      materias: parametros.materias,
-      dataLiberacao:
-        parametros.liberadoEm?.slice(0, 10) ||
-        new Date().toISOString().slice(0, 10),
-      tempoLimiteMinutos: tempo,
-    });
-    setValoresPasso2({
-      conteudos: parametros.conteudos,
-      quantidadeQuestoes: parametros.quantidadeQuestoes,
-      distribuicao: parametros.distribuicao,
-      adaptacoesAceitas: parametros.adaptacoesAceitas,
-    });
+    const idTimeout = window.setTimeout(() => {
+      setSimuladoId(simulado.id);
+      setValoresPasso1({
+        nome: parametros.nome,
+        turmaId: parametros.turmaId,
+        serie: parametros.serie,
+        materias: parametros.materias,
+        dataLiberacao:
+          parametros.liberadoEm?.slice(0, 10) ||
+          new Date().toISOString().slice(0, 10),
+        tempoLimiteMinutos: tempo,
+      });
+      setValoresPasso2({
+        conteudos: parametros.conteudos,
+        quantidadeQuestoes: parametros.quantidadeQuestoes,
+        distribuicao: parametros.distribuicao,
+        adaptacoesAceitas: parametros.adaptacoesAceitas,
+      });
+    }, 0);
+    return () => window.clearTimeout(idTimeout);
   }, [dadosEdicao?.simulado, simuladoId]);
 
   const podeAvancar = useMemo(() => {

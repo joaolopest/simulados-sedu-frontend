@@ -101,13 +101,12 @@ export default function PaginaAdminUsuarios() {
   const remover = useRemoverUsuario();
 
   useEffect(() => {
-    const id = setTimeout(() => setBuscaDebounced(busca), 300);
+    const id = setTimeout(() => {
+      setBuscaDebounced(busca);
+      setPagina(1);
+    }, 300);
     return () => clearTimeout(id);
   }, [busca]);
-
-  useEffect(() => {
-    setPagina(1);
-  }, [buscaDebounced, perfilFiltro, escolaFiltro]);
 
   const filtros = useMemo<FiltrosUsuario>(
     () => ({
@@ -188,7 +187,10 @@ export default function PaginaAdminUsuarios() {
         </div>
         <Select
           value={perfilFiltro}
-          onValueChange={(v) => setPerfilFiltro(v as PerfilUsuario | "todos")}
+          onValueChange={(v) => {
+            setPerfilFiltro(v as PerfilUsuario | "todos");
+            setPagina(1);
+          }}
         >
           <SelectTrigger className="w-full md:w-40">
             <SelectValue placeholder="Perfil" />
@@ -202,7 +204,13 @@ export default function PaginaAdminUsuarios() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={escolaFiltro} onValueChange={setEscolaFiltro}>
+        <Select
+          value={escolaFiltro}
+          onValueChange={(valor) => {
+            setEscolaFiltro(valor);
+            setPagina(1);
+          }}
+        >
           <SelectTrigger className="w-full md:w-56">
             <SelectValue placeholder="Escola" />
           </SelectTrigger>

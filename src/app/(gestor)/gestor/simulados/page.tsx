@@ -360,6 +360,7 @@ function CardSimulado({
     tempoMin >= 60
       ? `${Math.floor(tempoMin / 60)}h${tempoMin % 60 > 0 ? ` ${tempoMin % 60}min` : ""}`
       : `${tempoMin} min`;
+  const [agora] = useState(() => Date.now());
 
   // Progresso derivado até a rota de acompanhamento retornar eventos em tempo real.
   // pra status em_andamento podemos exibir uma barra leve baseada em criadoEm/encerraEm
@@ -371,11 +372,10 @@ function CardSimulado({
     const fim = parametros.encerraEm
       ? new Date(parametros.encerraEm).getTime()
       : inicio + tempoMin * 60 * 1000;
-    const agora = Date.now();
     if (fim <= inicio) return null;
     const pct = Math.max(0, Math.min(100, ((agora - inicio) / (fim - inicio)) * 100));
     return Math.round(pct);
-  }, [status, simulado.liberadoEm, simulado.criadoEm, parametros.encerraEm, tempoMin]);
+  }, [status, simulado.liberadoEm, simulado.criadoEm, parametros.encerraEm, tempoMin, agora]);
 
   function abrirRemocao(modo: "cancelar" | "remover" | "excluir") {
     setModoRemocao(modo);

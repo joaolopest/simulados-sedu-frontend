@@ -29,16 +29,6 @@ export function useConexaoOnline(): {
     window.addEventListener("online", aoFicarOnline);
     window.addEventListener("offline", aoFicarOffline);
 
-    // Sincronização inicial caso o estado tenha mudado antes do mount.
-    const atual = window.navigator.onLine;
-    setOnline((anterior) => {
-      if (anterior !== atual) {
-        setUltimaMudancaEm(new Date());
-        return atual;
-      }
-      return anterior;
-    });
-
     return () => {
       window.removeEventListener("online", aoFicarOnline);
       window.removeEventListener("offline", aoFicarOffline);

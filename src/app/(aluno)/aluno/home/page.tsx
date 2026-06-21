@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -150,7 +151,7 @@ export default function PaginaHomeAluno() {
 
 function CardProximoSimulado({ simulado }: { simulado: Simulado }) {
   const liberadoEm = simulado.liberadoEm ?? simulado.parametros.liberadoEm;
-  const agora = Date.now();
+  const [agora] = useState(() => Date.now());
   const liberadoTimestamp = liberadoEm ? new Date(liberadoEm).getTime() : agora;
   const disponivel = liberadoTimestamp <= agora;
   const diasFalta = disponivel

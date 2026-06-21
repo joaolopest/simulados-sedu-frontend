@@ -79,12 +79,6 @@ export default function PaginaExecutarSimulado({
   }, [data, simuladoAtual?.id, iniciarSimulado]);
 
   // detecta queda de conexão
-  useEffect(() => {
-    if (!online) {
-      setModalOfflineAberta(true);
-    }
-  }, [online]);
-
   const questoes = data?.questoes ?? [];
   const totalQuestoes = questoes.length;
   const questaoAtual = questoes[questaoAtualIndice];
@@ -144,6 +138,7 @@ export default function PaginaExecutarSimulado({
         await atualizar(`/simulados/${id}/responder`, {
           questaoId: resposta.questaoId,
           alternativaId: resposta.alternativaId,
+          tempoGastoSegundos: resposta.tempoGastoSegundos,
         });
       } catch {
         toast.error("Nao foi possivel salvar a resposta no banco.");
@@ -469,7 +464,10 @@ export default function PaginaExecutarSimulado({
       </Dialog>
 
       {/* MODAL offline */}
-      <Dialog open={modalOfflineAberta} onOpenChange={setModalOfflineAberta}>
+      <Dialog
+        open={modalOfflineAberta || !online}
+        onOpenChange={setModalOfflineAberta}
+      >
         <DialogContent>
           <DialogHeader>
             <div className="flex size-10 items-center justify-center rounded-full bg-warning-muted text-warning">
@@ -482,7 +480,10 @@ export default function PaginaExecutarSimulado({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setModalOfflineAberta(false)}>
+            <Button
+              disabled={!online}
+              onClick={() => setModalOfflineAberta(false)}
+            >
               Continuar respondendo
             </Button>
           </DialogFooter>

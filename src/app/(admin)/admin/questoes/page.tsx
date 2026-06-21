@@ -134,15 +134,14 @@ function ConteudoAdminQuestoes() {
 
   // Debounce 300ms
   useEffect(() => {
-    const id = setTimeout(() => setBuscaDebounced(busca), 300);
+    const id = setTimeout(() => {
+      setBuscaDebounced(busca);
+      setPagina(1);
+    }, 300);
     return () => clearTimeout(id);
   }, [busca]);
 
   // Reset página quando filtros mudam
-  useEffect(() => {
-    setPagina(1);
-  }, [buscaDebounced, series, materias, niveis, adaptacoes, statuses]);
-
   const filtros = useMemo<FiltrosQuestao>(
     () => ({
       busca: buscaDebounced || undefined,
@@ -191,11 +190,13 @@ function ConteudoAdminQuestoes() {
     setNiveis([]);
     setAdaptacoes([]);
     setStatuses([]);
+    setPagina(1);
   }
 
   function alternar<T>(lista: T[], item: T, setter: (l: T[]) => void): void {
     if (lista.includes(item)) setter(lista.filter((i) => i !== item));
     else setter([...lista, item]);
+    setPagina(1);
   }
 
   const meta = data?.meta;

@@ -17,6 +17,11 @@ interface EstadoPersistido {
   ultimoTickEm: number;
 }
 
+interface EstadoTimer {
+  segundosRestantes: number;
+  rodando: boolean;
+}
+
 function lerPersistido(chave: string): EstadoPersistido | null {
   if (typeof window === "undefined") return null;
   try {
@@ -41,7 +46,7 @@ function escreverPersistido(chave: string, dados: EstadoPersistido): void {
   try {
     window.localStorage.setItem(chave, JSON.stringify(dados));
   } catch {
-    // Silenciar — modo privado ou armazenamento cheio.
+    // Modo privado ou armazenamento cheio.
   }
 }
 
@@ -52,6 +57,33 @@ function limparPersistido(chave: string): void {
   } catch {
     // Ignorar.
   }
+}
+
+function calcularEstadoInicial(
+  duracaoSegundos: number,
+  iniciarAuto: boolean,
+  persistirEm?: string,
+): EstadoTimer {
+  if (persistirEm) {
+    const persistido = lerPersistido(persistirEm);
+    if (persistido) {
+      let restante = persistido.segundosRestantes;
+      if (persistido.rodando) {
+        const decorrido = Math.floor(
+          (Date.now() - persistido.ultimoTickEm) / 1000,
+        );
+        restante = Math.max(0, restante - decorrido);
+      }
+      return {
+        segundosRestantes: restante,
+        rodando: persistido.rodando && restante > 0,
+      };
+    }
+  }
+  return {
+    segundosRestantes: duracaoSegundos,
+    rodando: iniciarAuto,
+  };
 }
 
 export function useTimer(opcoes: OpcoesTimer): {
@@ -70,39 +102,13 @@ export function useTimer(opcoes: OpcoesTimer): {
     persistirEm,
   } = opcoes;
 
-  const inicialRef = useRef<{
-    segundosRestantes: number;
-    rodando: boolean;
-  } | null>(null);
-  if (inicialRef.current === null) {
-    if (persistirEm) {
-      const persistido = lerPersistido(persistirEm);
-      if (persistido) {
-        let restante = persistido.segundosRestantes;
-        if (persistido.rodando) {
-          const decorrido = Math.floor(
-            (Date.now() - persistido.ultimoTickEm) / 1000,
-          );
-          restante = Math.max(0, restante - decorrido);
-        }
-        inicialRef.current = {
-          segundosRestantes: restante,
-          rodando: persistido.rodando,
-        };
-      }
-    }
-    if (inicialRef.current === null) {
-      inicialRef.current = {
-        segundosRestantes: duracaoSegundos,
-        rodando: iniciarAuto,
-      };
-    }
-  }
-
-  const [segundosRestantes, setSegundosRestantes] = useState<number>(
-    inicialRef.current.segundosRestantes,
+  const [estadoInicial] = useState(() =>
+    calcularEstadoInicial(duracaoSegundos, iniciarAuto, persistirEm),
   );
-  const [rodando, setRodando] = useState<boolean>(inicialRef.current.rodando);
+  const [segundosRestantes, setSegundosRestantes] = useState<number>(
+    estadoInicial.segundosRestantes,
+  );
+  const [rodando, setRodando] = useState<boolean>(estadoInicial.rodando);
 
   const avisosDisparados = useRef<Set<number>>(new Set());
   const aoTerminarRef = useRef(aoTerminar);
@@ -126,7 +132,6 @@ export function useTimer(opcoes: OpcoesTimer): {
     persistirRef.current = persistirEm;
   }, [persistirEm]);
 
-  // Tick por intervalo.
   useEffect(() => {
     if (!rodando) return;
     const id = window.setInterval(() => {
@@ -134,7 +139,6 @@ export function useTimer(opcoes: OpcoesTimer): {
         if (atual <= 0) return 0;
         const proximo = atual - 1;
 
-        // Avisos.
         for (const limite of avisosRef.current) {
           if (proximo === limite && !avisosDisparados.current.has(limite)) {
             avisosDisparados.current.add(limite);
@@ -142,37 +146,24 @@ export function useTimer(opcoes: OpcoesTimer): {
           }
         }
 
-        // Persistir.
         if (persistirRef.current) {
           escreverPersistido(persistirRef.current, {
             segundosRestantes: proximo,
-            rodando: true,
+            rodando: proximo > 0,
             ultimoTickEm: Date.now(),
           });
         }
 
         if (proximo === 0) {
+          setRodando(false);
           aoTerminarRef.current?.();
         }
+
         return proximo;
       });
     }, 1000);
     return () => window.clearInterval(id);
   }, [rodando]);
-
-  // Quando atinge zero, parar.
-  useEffect(() => {
-    if (segundosRestantes === 0 && rodando) {
-      setRodando(false);
-      if (persistirRef.current) {
-        escreverPersistido(persistirRef.current, {
-          segundosRestantes: 0,
-          rodando: false,
-          ultimoTickEm: Date.now(),
-        });
-      }
-    }
-  }, [segundosRestantes, rodando]);
 
   const iniciar = useCallback(() => {
     setRodando(true);

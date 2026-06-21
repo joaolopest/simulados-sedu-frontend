@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bell, Check, CheckCheck, Undo2 } from "lucide-react";
 
@@ -40,7 +39,6 @@ const COR_TIPO: Record<string, string> = {
 };
 
 export default function PaginaNotificacoes() {
-  const router = useRouter();
   const qc = useQueryClient();
   const usuario = useAuthStore((s) => s.usuario);
 

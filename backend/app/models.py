@@ -791,6 +791,7 @@ class Resposta(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    tempo_gasto_segundos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     aluno: Mapped["Aluno"] = relationship(back_populates="respostas")
     simulado: Mapped["Simulado"] = relationship(back_populates="respostas")

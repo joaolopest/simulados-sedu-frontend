@@ -14,9 +14,15 @@ export function useContadorAnimado({
   formatador = (n: number) => Math.round(n).toLocaleString("pt-BR"),
 }: PropriedadesContador) {
   const formatadorRef = useRef(formatador);
-  formatadorRef.current = formatador;
   const duracaoRef = useRef(duracao);
-  duracaoRef.current = duracao;
+
+  useEffect(() => {
+    formatadorRef.current = formatador;
+  }, [formatador]);
+
+  useEffect(() => {
+    duracaoRef.current = duracao;
+  }, [duracao]);
 
   const [valor, setValor] = useState(() => {
     if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {

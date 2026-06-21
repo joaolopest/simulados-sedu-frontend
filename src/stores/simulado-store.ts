@@ -16,6 +16,7 @@ export interface EstadoSimulado {
   questaoAtualIndice: number;
   respostas: Record<string, RespostaQuestao>;
   iniciadoEm: string | null;
+  ultimoRegistroTempoEm: string | null;
   modoFoco: boolean;
 
   iniciarSimulado: (
@@ -37,6 +38,7 @@ const ESTADO_INICIAL = {
   questaoAtualIndice: 0,
   respostas: {} as Record<string, RespostaQuestao>,
   iniciadoEm: null as string | null,
+  ultimoRegistroTempoEm: null as string | null,
   modoFoco: false,
 };
 
@@ -49,24 +51,34 @@ export const useSimuladoStore = create<EstadoSimulado>()((set, get) => ({
       questaoAtualIndice: 0,
       respostas: respostasPorQuestao(respostasIniciais),
       iniciadoEm: new Date().toISOString(),
+      ultimoRegistroTempoEm: new Date().toISOString(),
       modoFoco: false,
     });
   },
 
   responderQuestao: (questaoId, alternativaId) => {
-    const { respostas } = get();
+    const { respostas, iniciadoEm, ultimoRegistroTempoEm } = get();
     const anterior = respostas[questaoId];
     const trocas = anterior ? anterior.trocasDeResposta + 1 : 0;
-    const tempoAcumulado = anterior?.tempoGastoSegundos ?? 0;
+    const agora = new Date();
+    const marcaAnterior = ultimoRegistroTempoEm ?? iniciadoEm;
+    const decorrido =
+      marcaAnterior === null
+        ? 0
+        : Math.max(1, Math.floor((agora.getTime() - new Date(marcaAnterior).getTime()) / 1000));
+    const tempoAcumulado = (anterior?.tempoGastoSegundos ?? 0) + decorrido;
     const nova: RespostaQuestao = {
       questaoId,
       alternativaId,
       status: "respondida",
       tempoGastoSegundos: tempoAcumulado,
       trocasDeResposta: trocas,
-      respondidaEm: new Date().toISOString(),
+      respondidaEm: agora.toISOString(),
     };
-    set({ respostas: { ...respostas, [questaoId]: nova } });
+    set({
+      respostas: { ...respostas, [questaoId]: nova },
+      ultimoRegistroTempoEm: agora.toISOString(),
+    });
   },
 
   marcarRevisao: (questaoId) => {

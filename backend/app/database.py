@@ -39,11 +39,17 @@ def _normalizar_url(url: str) -> str:
 
 
 DATABASE_URL = _normalizar_url(os.environ.get("DATABASE_URL", DATABASE_URL_LOCAL))
+CONNECT_ARGS = (
+    {"prepare_threshold": None}
+    if DATABASE_URL.startswith("postgresql+psycopg://")
+    else {}
+)
 
 engine = create_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
+    connect_args=CONNECT_ARGS,
 )
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)

@@ -112,17 +112,20 @@ export default function PaginaEditarQuestao({
   // Hidrata estado quando dados chegarem
   useEffect(() => {
     if (!data) return;
-    setEnunciado(data.enunciado);
-    setImagemUrl(data.imagemUrl);
-    setAlternativas(data.alternativas);
-    setExplicacao(data.explicacao ?? "");
-    setSerie(data.serie);
-    setMateria(data.materia);
-    setConteudo(data.conteudo);
-    setNivel(data.nivel);
-    setAdaptacoes(data.adaptacoes);
-    setTempo(data.tempoEstimadoSegundos);
-    setCompetenciasTexto(data.competencias.join(", "));
+    const idTimeout = window.setTimeout(() => {
+      setEnunciado(data.enunciado);
+      setImagemUrl(data.imagemUrl);
+      setAlternativas(data.alternativas);
+      setExplicacao(data.explicacao ?? "");
+      setSerie(data.serie);
+      setMateria(data.materia);
+      setConteudo(data.conteudo);
+      setNivel(data.nivel);
+      setAdaptacoes(data.adaptacoes);
+      setTempo(data.tempoEstimadoSegundos);
+      setCompetenciasTexto(data.competencias.join(", "));
+    }, 0);
+    return () => window.clearTimeout(idTimeout);
   }, [data]);
 
   const sensores = useSensors(

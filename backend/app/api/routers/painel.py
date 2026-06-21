@@ -294,9 +294,7 @@ def _computar_resultado(
         or simulado.criado_em
     )
     # Tempo real gasto = da 1ª à última resposta (autosave grava cada uma na hora).
-    tempo_total = (
-        int((ultima - primeira).total_seconds()) if primeira and ultima else 0
-    )
+    tempo_total = sum(int(r.tempo_gasto_segundos or 0) for r in respostas)
     return {
         "id": f"res_{aluno_id}_{simulado.id}",
         "simuladoId": str(simulado.id),
@@ -306,7 +304,7 @@ def _computar_resultado(
                 "questaoId": str(r.questao_id),
                 "alternativaId": str(r.alternativa_id),
                 "status": "respondida",
-                "tempoGastoSegundos": 0,
+                "tempoGastoSegundos": int(r.tempo_gasto_segundos or 0),
                 "trocasDeResposta": 0,
                 "respondidaEm": r.respondida_em.isoformat() if r.respondida_em else None,
             }
@@ -322,6 +320,14 @@ def _computar_resultado(
         "finalizadoEm": finalizado_em.isoformat() if finalizado_em else None,
         "desempenhoPorCompetencia": [],
     }
+
+
+def _normalizar_tempo_gasto(valor: object) -> int:
+    try:
+        segundos = int(valor) if valor is not None else 0
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(segundos, 24 * 60 * 60))
 
 
 def _aluno_do_usuario(usuario: Usuario) -> Aluno:
@@ -708,7 +714,7 @@ def aluno_simulado(
                 "questaoId": str(r.questao_id),
                 "alternativaId": str(r.alternativa_id),
                 "status": "respondida",
-                "tempoGastoSegundos": 0,
+                "tempoGastoSegundos": int(r.tempo_gasto_segundos or 0),
                 "trocasDeResposta": 0,
                 "respondidaEm": r.respondida_em.isoformat() if r.respondida_em else None,
             }
@@ -1905,6 +1911,7 @@ def aluno_responder(
         raise HTTPException(status_code=403, detail="Questão fora deste simulado.")
 
     alt_raw = corpo.get("alternativaId")
+    tempo_gasto = _normalizar_tempo_gasto(corpo.get("tempoGastoSegundos"))
     agora = datetime.now(timezone.utc)
     if alt_raw:
         alternativa_id = int(alt_raw)
@@ -1923,6 +1930,7 @@ def aluno_responder(
             existente.alternativa_id = alternativa_id
             existente.correta = correta
             existente.respondida_em = agora
+            existente.tempo_gasto_segundos = tempo_gasto
         else:
             sessao.add(
                 Resposta(
@@ -1932,6 +1940,7 @@ def aluno_responder(
                     alternativa_id=alternativa_id,
                     correta=correta,
                     respondida_em=agora,
+                    tempo_gasto_segundos=tempo_gasto,
                 )
             )
         auditoria_service.registrar(
@@ -1949,7 +1958,7 @@ def aluno_responder(
         "questaoId": str(questao_id),
         "alternativaId": str(alt_raw) if alt_raw else None,
         "status": "respondida" if alt_raw else "em_branco",
-        "tempoGastoSegundos": 0,
+        "tempoGastoSegundos": tempo_gasto,
         "trocasDeResposta": 0,
         "respondidaEm": agora.isoformat(),
     }
@@ -1983,6 +1992,7 @@ def aluno_finalizar(
         if alt is None or alt.questao_id != questao_id:
             raise HTTPException(status_code=400, detail="Alternativa invalida para a questao.")
         correta = bool(alt.correta)
+        tempo_gasto = _normalizar_tempo_gasto(resposta.get("tempoGastoSegundos"))
         existente = sessao.scalar(
             select(Resposta).where(
                 Resposta.aluno_id == aluno.id,
@@ -1995,6 +2005,7 @@ def aluno_finalizar(
             existente.alternativa_id = alternativa_id
             existente.correta = correta
             existente.respondida_em = agora_resposta
+            existente.tempo_gasto_segundos = tempo_gasto
         else:
             sessao.add(
                 Resposta(
@@ -2004,6 +2015,7 @@ def aluno_finalizar(
                     alternativa_id=alternativa_id,
                     correta=correta,
                     respondida_em=agora_resposta,
+                    tempo_gasto_segundos=tempo_gasto,
                 )
             )
     auditoria_service.registrar(
