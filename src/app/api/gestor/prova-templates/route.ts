@@ -11,31 +11,20 @@ function respostaErro(erro: unknown): NextResponse {
   );
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   const token = tokenDaRequisicao(request);
-  const { id } = await params;
-
   try {
-    const resp = await backendFetch<Record<string, unknown>>(
-      `/simulados/${id}/inscricoes`,
-      { token },
-    );
+    const resp = await backendFetch<Record<string, unknown>>("/gestor/prova-templates", {
+      token,
+    });
     return NextResponse.json(resp);
   } catch (erro) {
     return respostaErro(erro);
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+export async function POST(request: Request): Promise<NextResponse> {
   const token = tokenDaRequisicao(request);
-  const { id } = await params;
-
   let body: unknown;
   try {
     body = await request.json();
@@ -45,15 +34,12 @@ export async function POST(
       { status: 400 },
     );
   }
-  const dados = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
-  const alunoId = dados.aluno_id ?? dados.alunoId;
-  const payload = { alunoIds: [alunoId] };
-
   try {
-    const resp = await backendFetch<Record<string, unknown>>(
-      `/gestor/simulados/${id}/inscricoes/lote`,
-      { method: "POST", token, body: payload },
-    );
+    const resp = await backendFetch<Record<string, unknown>>("/gestor/prova-templates", {
+      method: "POST",
+      token,
+      body,
+    });
     return NextResponse.json(resp, { status: 201 });
   } catch (erro) {
     return respostaErro(erro);

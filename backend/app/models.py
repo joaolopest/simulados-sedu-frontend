@@ -724,6 +724,15 @@ class Simulado(Base):
         back_populates="simulado", cascade="all, delete-orphan",
     )
     respostas: Mapped[List["Resposta"]] = relationship(back_populates="simulado")
+    snapshots: Mapped[List["SimuladoSnapshot"]] = relationship(
+        back_populates="simulado", cascade="all, delete-orphan",
+    )
+    tentativas: Mapped[List["SimuladoTentativa"]] = relationship(
+        back_populates="simulado", cascade="all, delete-orphan",
+    )
+    resultados: Mapped[List["ResultadoSimulado"]] = relationship(
+        back_populates="simulado", cascade="all, delete-orphan",
+    )
 
 
 class SimuladoInscricao(Base):
@@ -769,6 +778,73 @@ class SimuladoQuestao(Base):
     questao: Mapped["Questao"] = relationship()
 
 
+class SimuladoSnapshot(Base):
+    """Versao congelada da prova no momento da liberacao."""
+
+    __tablename__ = "simulado_snapshots"
+    __table_args__ = (
+        UniqueConstraint("simulado_id", "versao", name="uq_simulado_snapshot_versao"),
+        Index("ix_simulado_snapshots_simulado", "simulado_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    simulado_id: Mapped[int] = mapped_column(
+        ForeignKey("simulados.id", ondelete="CASCADE"), nullable=False,
+    )
+    versao: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    titulo: Mapped[str] = mapped_column(String(160), nullable=False)
+    parametros_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    questoes_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    total_questoes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    criado_por_id: Mapped[Optional[int]] = mapped_column(ForeignKey("usuarios.id"), nullable=True)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+    simulado: Mapped["Simulado"] = relationship(back_populates="snapshots")
+    criado_por: Mapped[Optional["Usuario"]] = relationship()
+
+
+class SimuladoTentativa(Base):
+    """Tentativa individual do aluno em uma prova."""
+
+    __tablename__ = "simulado_tentativas"
+    __table_args__ = (
+        UniqueConstraint("simulado_id", "aluno_id", "numero", name="uq_simulado_tentativa_numero"),
+        Index("ix_simulado_tentativas_aluno_status", "aluno_id", "status"),
+        Index("ix_simulado_tentativas_simulado_status", "simulado_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    simulado_id: Mapped[int] = mapped_column(
+        ForeignKey("simulados.id", ondelete="CASCADE"), nullable=False,
+    )
+    aluno_id: Mapped[int] = mapped_column(ForeignKey("alunos.id"), nullable=False)
+    snapshot_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("simulado_snapshots.id"), nullable=True,
+    )
+    numero: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="nao_iniciado", nullable=False)
+    iniciado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ultima_atividade_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    finalizado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reaberto_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reaberto_por_id: Mapped[Optional[int]] = mapped_column(ForeignKey("usuarios.id"), nullable=True)
+    motivo_reabertura: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tempo_total_segundos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    simulado: Mapped["Simulado"] = relationship(back_populates="tentativas")
+    aluno: Mapped["Aluno"] = relationship()
+    snapshot: Mapped[Optional["SimuladoSnapshot"]] = relationship()
+    reaberto_por: Mapped[Optional["Usuario"]] = relationship()
+    respostas: Mapped[List["Resposta"]] = relationship(back_populates="tentativa")
+    resultado: Mapped[Optional["ResultadoSimulado"]] = relationship(
+        back_populates="tentativa", uselist=False,
+    )
+
+
 class Resposta(Base):
     __tablename__ = "respostas"
     __table_args__ = (
@@ -778,13 +854,18 @@ class Resposta(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tentativa_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("simulado_tentativas.id"), nullable=True,
+    )
     aluno_id: Mapped[int] = mapped_column(ForeignKey("alunos.id"), nullable=False)
     simulado_id: Mapped[int] = mapped_column(ForeignKey("simulados.id"), nullable=False)
     questao_id: Mapped[int] = mapped_column(ForeignKey("questoes.id"), nullable=False)
-    alternativa_id: Mapped[int] = mapped_column(
-        ForeignKey("alternativas.id"), nullable=False,
+    alternativa_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("alternativas.id"), nullable=True,
     )
     correta: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="respondida", nullable=False)
+    trocas_de_resposta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     respondida_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -795,8 +876,71 @@ class Resposta(Base):
 
     aluno: Mapped["Aluno"] = relationship(back_populates="respostas")
     simulado: Mapped["Simulado"] = relationship(back_populates="respostas")
+    tentativa: Mapped[Optional["SimuladoTentativa"]] = relationship(back_populates="respostas")
     questao: Mapped["Questao"] = relationship()
     alternativa: Mapped["Alternativa"] = relationship()
+
+
+class ResultadoSimulado(Base):
+    """Resultado congelado de uma tentativa finalizada."""
+
+    __tablename__ = "resultados_simulado"
+    __table_args__ = (
+        UniqueConstraint("tentativa_id", name="uq_resultado_tentativa"),
+        Index("ix_resultados_simulado_aluno", "aluno_id"),
+        Index("ix_resultados_simulado_simulado", "simulado_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    simulado_id: Mapped[int] = mapped_column(
+        ForeignKey("simulados.id", ondelete="CASCADE"), nullable=False,
+    )
+    aluno_id: Mapped[int] = mapped_column(ForeignKey("alunos.id"), nullable=False)
+    tentativa_id: Mapped[int] = mapped_column(
+        ForeignKey("simulado_tentativas.id", ondelete="CASCADE"), nullable=False,
+    )
+    snapshot_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("simulado_snapshots.id"), nullable=True,
+    )
+    nota_final: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    preenchidas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    acertos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    erros: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    em_branco: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tempo_total_segundos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    resultado_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+    simulado: Mapped["Simulado"] = relationship(back_populates="resultados")
+    aluno: Mapped["Aluno"] = relationship()
+    tentativa: Mapped["SimuladoTentativa"] = relationship(back_populates="resultado")
+    snapshot: Mapped[Optional["SimuladoSnapshot"]] = relationship()
+
+
+class ProvaTemplate(Base):
+    """Modelo reutilizavel para gerar provas por filtros."""
+
+    __tablename__ = "prova_templates"
+    __table_args__ = (
+        Index("ix_prova_templates_escola_ativo", "escola_id", "ativo"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    escola_id: Mapped[Optional[int]] = mapped_column(ForeignKey("escolas.id"), nullable=True)
+    criado_por_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), nullable=False)
+    parametros_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    atualizado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    escola: Mapped[Optional["Escola"]] = relationship()
+    criado_por: Mapped["Usuario"] = relationship()
 
 
 # ============================================================================

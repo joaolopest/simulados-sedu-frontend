@@ -25,22 +25,27 @@ from app.api.permissoes import (
 )
 from app.api.routers.questoes import _serializar as _serializar_questao
 from app.enums import PerfilUsuario, StatusQuestao, StatusSimulado
-from app.services import auditoria_service, questao_service, simulado_service
+from app.services import auditoria_service, prova_avancada_service, questao_service, simulado_service
 from app.models import (
     Aluno,
     Alternativa,
+    Conteudo,
     Escola,
     GuiaEstudo,
     Materia,
     Nivel,
     Questao,
     Resposta,
+    ResultadoSimulado,
     Serie,
     Simulado,
     SimuladoInscricao,
     SimuladoQuestao,
+    SimuladoSnapshot,
+    SimuladoTentativa,
     Turma,
     Usuario,
+    ProvaTemplate,
 )
 
 # Status do simulado: enum/maiúsculo do banco -> code do frontend.
@@ -267,6 +272,23 @@ def _computar_resultado(
     incluir_sem_respostas: bool = False,
 ) -> dict | None:
     """Calcula o ResultadoSimulado do aluno a partir das respostas no banco."""
+    persistido = prova_avancada_service.resultado_persistido(
+        sessao, simulado_id=simulado.id, aluno_id=aluno_id,
+    )
+    if persistido is not None:
+        dados = dict(persistido.resultado_json or {})
+        dados.setdefault("id", f"res_{aluno_id}_{simulado.id}_{persistido.tentativa_id}")
+        dados.setdefault("simuladoId", str(simulado.id))
+        dados.setdefault("alunoId", str(aluno_id))
+        dados.setdefault("tentativaId", str(persistido.tentativa_id))
+        dados.setdefault("notaFinal", persistido.nota_final)
+        dados.setdefault("preenchidas", persistido.preenchidas)
+        dados.setdefault("acertos", persistido.acertos)
+        dados.setdefault("erros", persistido.erros)
+        dados.setdefault("emBranco", persistido.em_branco)
+        dados.setdefault("tempoTotalSegundos", persistido.tempo_total_segundos)
+        return dados
+
     ids_questoes = {sq.questao_id for sq in simulado.questoes}
     respostas = sessao.scalars(
         select(Resposta).where(
@@ -279,33 +301,45 @@ def _computar_resultado(
     if not respostas and not incluir_sem_respostas:
         return None
     total_questoes = len(ids_questoes)
-    acertos = sum(1 for r in respostas if r.correta)
-    respondidas = len(respostas)
+    respondidas_lista = [
+        r for r in respostas if r.status == "respondida" and r.alternativa_id is not None
+    ]
+    ids_com_resposta = {r.questao_id for r in respostas}
+    acertos = sum(1 for r in respondidas_lista if r.correta)
+    respondidas = len(respondidas_lista)
     erros = respondidas - acertos
-    em_branco = max(0, total_questoes - respondidas)
+    brancos_explicitos = sum(
+        1 for r in respostas if r.status == "em_branco" or r.alternativa_id is None
+    )
+    em_branco = brancos_explicitos + max(0, total_questoes - len(ids_com_resposta))
     nota = round((acertos / total_questoes) * 10, 1) if total_questoes else 0.0
     _tempos = [r.respondida_em for r in respostas if r.respondida_em]
     primeira = min(_tempos) if _tempos else None
     ultima = max(_tempos) if _tempos else None
     inscricao = _inscricao_simulado_aluno(sessao, aluno_id, simulado.id)
+    tentativa = prova_avancada_service.tentativa_mais_recente(
+        sessao, simulado_id=simulado.id, aluno_id=aluno_id,
+    )
     finalizado_em = (
-        ultima
+        (tentativa.finalizado_em if tentativa and tentativa.finalizado_em else None)
+        or ultima
         or (inscricao.inscrito_em if inscricao and inscricao.status == "finalizado" else None)
         or simulado.criado_em
     )
     # Tempo real gasto = da 1ª à última resposta (autosave grava cada uma na hora).
     tempo_total = sum(int(r.tempo_gasto_segundos or 0) for r in respostas)
     return {
-        "id": f"res_{aluno_id}_{simulado.id}",
+        "id": f"res_{aluno_id}_{simulado.id}_{tentativa.id if tentativa else 'legacy'}",
         "simuladoId": str(simulado.id),
         "alunoId": str(aluno_id),
+        "tentativaId": str(tentativa.id) if tentativa else None,
         "respostas": [
             {
                 "questaoId": str(r.questao_id),
-                "alternativaId": str(r.alternativa_id),
-                "status": "respondida",
+                "alternativaId": str(r.alternativa_id) if r.alternativa_id else None,
+                "status": r.status or ("respondida" if r.alternativa_id else "em_branco"),
                 "tempoGastoSegundos": int(r.tempo_gasto_segundos or 0),
-                "trocasDeResposta": 0,
+                "trocasDeResposta": int(r.trocas_de_resposta or 0),
                 "respondidaEm": r.respondida_em.isoformat() if r.respondida_em else None,
             }
             for r in respostas
@@ -328,6 +362,79 @@ def _normalizar_tempo_gasto(valor: object) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, min(segundos, 24 * 60 * 60))
+
+
+def _salvar_resposta_aluno(
+    sessao: Session,
+    *,
+    aluno: Aluno,
+    simulado: Simulado,
+    tentativa: SimuladoTentativa,
+    questao_id: int,
+    alternativa_raw: object,
+    tempo_gasto: int,
+) -> Resposta:
+    if questao_id not in {sq.questao_id for sq in simulado.questoes}:
+        raise HTTPException(status_code=403, detail="Questao fora deste simulado.")
+
+    alternativa_id: int | None = None
+    correta = False
+    status = "em_branco"
+    if alternativa_raw:
+        try:
+            alternativa_id = int(alternativa_raw)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Alternativa invalida.") from exc
+        alt = sessao.get(Alternativa, alternativa_id)
+        if alt is None or alt.questao_id != questao_id:
+            raise HTTPException(status_code=400, detail="Alternativa invalida para a questao.")
+        correta = bool(alt.correta)
+        status = "respondida"
+
+    existente = sessao.scalar(
+        select(Resposta).where(
+            Resposta.aluno_id == aluno.id,
+            Resposta.simulado_id == simulado.id,
+            Resposta.questao_id == questao_id,
+        )
+    )
+    agora = datetime.now(timezone.utc)
+    if existente:
+        if existente.alternativa_id is not None and existente.alternativa_id != alternativa_id:
+            existente.trocas_de_resposta = int(existente.trocas_de_resposta or 0) + 1
+        existente.tentativa_id = tentativa.id
+        existente.alternativa_id = alternativa_id
+        existente.correta = correta
+        existente.status = status
+        existente.respondida_em = agora
+        existente.tempo_gasto_segundos = tempo_gasto
+        return existente
+
+    resposta = Resposta(
+        tentativa_id=tentativa.id,
+        aluno_id=aluno.id,
+        simulado_id=simulado.id,
+        questao_id=questao_id,
+        alternativa_id=alternativa_id,
+        correta=correta,
+        status=status,
+        respondida_em=agora,
+        tempo_gasto_segundos=tempo_gasto,
+    )
+    sessao.add(resposta)
+    sessao.flush()
+    return resposta
+
+
+def _serializar_questao_para_aluno(questao: Questao, *, incluir_gabarito: bool = False) -> dict:
+    dados = _serializar_questao(questao)
+    if incluir_gabarito:
+        return dados
+    dados.pop("explicacao", None)
+    for alternativa in dados.get("alternativas", []) or []:
+        if isinstance(alternativa, dict):
+            alternativa.pop("correta", None)
+    return dados
 
 
 def _aluno_do_usuario(usuario: Usuario) -> Aluno:
@@ -362,7 +469,23 @@ def _simulado_finalizado_por_aluno(
     sessao: Session, aluno: Aluno, simulado: Simulado
 ) -> bool:
     inscricao = _inscricao_simulado_aluno(sessao, aluno.id, simulado.id)
-    return inscricao is not None and inscricao.status == "finalizado"
+    tentativa = prova_avancada_service.tentativa_mais_recente(
+        sessao, simulado_id=simulado.id, aluno_id=aluno.id,
+    )
+    resultado = prova_avancada_service.resultado_persistido(
+        sessao, simulado_id=simulado.id, aluno_id=aluno.id,
+    )
+    if tentativa is not None and tentativa.status in {
+        "nao_iniciado",
+        "em_andamento",
+        "reaberta",
+    }:
+        return False
+    return (
+        (inscricao is not None and inscricao.status == "finalizado")
+        or (tentativa is not None and tentativa.status == "finalizada")
+        or resultado is not None
+    )
 
 
 def _marcar_simulado_finalizado_para_aluno(
@@ -482,7 +605,7 @@ def _alunos_do_simulado(simulado: Simulado) -> list[Aluno]:
     for aluno in (simulado.turma.alunos if simulado.turma else []):
         alunos[aluno.id] = aluno
     for inscricao in simulado.inscricoes:
-        if inscricao.status == "inscrito" and inscricao.aluno:
+        if inscricao.status in {"inscrito", "em_andamento", "reaberto", "finalizado"} and inscricao.aluno:
             alunos[inscricao.aluno_id] = inscricao.aluno
     return sorted(alunos.values(), key=lambda a: a.usuario.nome if a.usuario else "")
 
@@ -696,7 +819,7 @@ def aluno_simulado(
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_aluno_simulado_v2(sessao, aluno, s)
     questoes = [
-        _serializar_questao(sq.questao)
+        _serializar_questao_para_aluno(sq.questao)
         for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
         if sq.questao
     ]
@@ -712,10 +835,10 @@ def aluno_simulado(
         "respostas": [
             {
                 "questaoId": str(r.questao_id),
-                "alternativaId": str(r.alternativa_id),
-                "status": "respondida",
+                "alternativaId": str(r.alternativa_id) if r.alternativa_id else None,
+                "status": r.status or ("respondida" if r.alternativa_id else "em_branco"),
                 "tempoGastoSegundos": int(r.tempo_gasto_segundos or 0),
-                "trocasDeResposta": 0,
+                "trocasDeResposta": int(r.trocas_de_resposta or 0),
                 "respondidaEm": r.respondida_em.isoformat() if r.respondida_em else None,
             }
             for r in respostas
@@ -740,7 +863,7 @@ def aluno_resultado(
     if resultado is None:
         raise HTTPException(status_code=404, detail="Resultado não disponível.")
     questoes = [
-        _serializar_questao(sq.questao)
+        _serializar_questao_para_aluno(sq.questao, incluir_gabarito=True)
         for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
         if sq.questao
     ]
@@ -1174,6 +1297,255 @@ def criar_simulado_rascunho(
 # ---------------------------------------------------------------------------
 
 
+def _selecionar_questoes_por_parametros(
+    sessao: Session,
+    *,
+    usuario: Usuario,
+    parametros: dict,
+) -> tuple[list[Questao], list[str]]:
+    quantidade = _inteiro_positivo(
+        parametros.get("quantidadeQuestoes", parametros.get("quantidade")),
+        10,
+    )
+    quantidade = max(1, min(quantidade, 100))
+    avisos: list[str] = []
+    q = (
+        sessao.query(Questao)
+        .join(Serie, Questao.serie_id == Serie.id)
+        .join(Materia, Questao.materia_id == Materia.id)
+        .join(Nivel, Questao.nivel_id == Nivel.id)
+        .filter(Questao.status == StatusQuestao.PUBLICADA)
+    )
+    serie_nome = labels.serie_nome(parametros.get("serie"))
+    if serie_nome:
+        q = q.filter(Serie.nome == serie_nome)
+    materias = [
+        labels.materia_nome(m)
+        for m in _lista_unica(parametros.get("materias") or parametros.get("materia"))
+    ]
+    materias = [m for m in materias if m]
+    if materias:
+        q = q.filter(Materia.nome.in_(materias))
+    conteudos = [
+        str(c).strip()
+        for c in _lista_unica(parametros.get("conteudos"))
+        if str(c).strip()
+    ]
+    if conteudos:
+        q = q.filter(Questao.conteudo.has(Conteudo.nome.in_(conteudos)))
+    niveis = [
+        labels.MAP_NIVEL.get(n, n)
+        for n in _lista_unica(parametros.get("niveis") or parametros.get("nivel"))
+    ]
+    niveis = [n for n in niveis if n]
+    if niveis:
+        q = q.filter(Nivel.nome.in_(niveis))
+    if "comImagem" in parametros:
+        if parametros.get("comImagem") is True:
+            q = q.filter(Questao.imagem_url.is_not(None), Questao.imagem_url != "")
+        elif parametros.get("comImagem") is False:
+            q = q.filter((Questao.imagem_url.is_(None)) | (Questao.imagem_url == ""))
+    q = aplicar_escopo_questoes(q, usuario)
+    candidatas = q.order_by(Questao.id.desc()).all()
+
+    if parametros.get("evitarQuestoesJaUsadas"):
+        usadas = set(sessao.scalars(select(SimuladoQuestao.questao_id)).all())
+        filtradas = [questao for questao in candidatas if questao.id not in usadas]
+        if len(filtradas) < quantidade:
+            avisos.append(
+                "O banco nao tem questoes ineditas suficientes; algumas usadas recentemente podem entrar."
+            )
+        candidatas = filtradas or candidatas
+
+    distribuicao = parametros.get("distribuicao") or {}
+    por_nivel: dict[str, list[Questao]] = {"facil": [], "medio": [], "dificil": []}
+    for questao in candidatas:
+        code = labels.nivel_code(questao.nivel.nome if questao.nivel else "")
+        if code in por_nivel:
+            por_nivel[code].append(questao)
+
+    selecionadas: list[Questao] = []
+    if isinstance(distribuicao, dict) and any(distribuicao.values()):
+        metas = {
+            nivel: round((float(distribuicao.get(nivel, 0) or 0) / 100) * quantidade)
+            for nivel in por_nivel
+        }
+        for nivel, meta in metas.items():
+            selecionadas.extend(por_nivel[nivel][:meta])
+    faltam = quantidade - len(selecionadas)
+    if faltam > 0:
+        escolhidas = {questao.id for questao in selecionadas}
+        selecionadas.extend(
+            [questao for questao in candidatas if questao.id not in escolhidas][:faltam]
+        )
+    if len(selecionadas) < quantidade:
+        avisos.append(
+            f"Banco retornou {len(selecionadas)} de {quantidade} questoes solicitadas."
+        )
+    return selecionadas[:quantidade], avisos
+
+
+def _persistir_questoes_simulado(
+    sessao: Session, simulado: Simulado, questoes: list[Questao],
+) -> None:
+    sessao.query(SimuladoQuestao).filter(SimuladoQuestao.simulado_id == simulado.id).delete()
+    for ordem, questao in enumerate(questoes, start=1):
+        sessao.add(
+            SimuladoQuestao(
+                simulado_id=simulado.id,
+                questao_id=questao.id,
+                ordem_questao=ordem,
+                alternativas_ordem=[alt.id for alt in questao.alternativas],
+            )
+        )
+    simulado.status = StatusSimulado.GERADO
+
+
+@router.post(
+    "/gestor/simulados/gerar-automaticamente",
+    status_code=201,
+    dependencies=[Depends(montadores_prova)],
+)
+def gerar_simulado_automaticamente(
+    parametros: dict,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    turma_id_raw = parametros.get("turmaId")
+    try:
+        turma_id = int(turma_id_raw) if turma_id_raw is not None else None
+    except (TypeError, ValueError):
+        turma_id = None
+    _exigir_turma_permitida(sessao, usuario, turma_id)
+    questoes, avisos = _selecionar_questoes_por_parametros(
+        sessao, usuario=usuario, parametros=parametros,
+    )
+    if not questoes:
+        raise HTTPException(
+            status_code=422,
+            detail="Nenhuma questao publicada encontrada para os filtros informados.",
+        )
+    sim = Simulado(
+        gestor_id=usuario.id,
+        turma_id=turma_id,
+        titulo=parametros.get("nome") or parametros.get("titulo") or "Prova automatica",
+        parametros_json=parametros,
+        status=StatusSimulado.RASCUNHO,
+        criado_em=datetime.now(timezone.utc),
+    )
+    sessao.add(sim)
+    sessao.flush()
+    _persistir_questoes_simulado(sessao, sim, questoes)
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="gerar_prova_automatica",
+        alvo_tipo="simulado",
+        alvo_id=sim.id,
+        detalhes=f"Gerou prova automatica com {len(questoes)} questoes.",
+        request=request,
+    )
+    sessao.commit()
+    sessao.refresh(sim)
+    return {
+        "simulado": _serializar_simulado(sim),
+        "questoesSelecionadas": [_serializar_questao(q) for q in questoes],
+        "questaoIds": [str(q.id) for q in questoes],
+        "avisos": avisos,
+    }
+
+
+@router.get("/gestor/prova-templates", dependencies=[Depends(montadores_prova)])
+def listar_templates_prova(
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    q = (
+        select(ProvaTemplate)
+        .where(ProvaTemplate.ativo.is_(True))
+        .order_by(ProvaTemplate.criado_em.desc())
+    )
+    if usuario.perfil != PerfilUsuario.ADMIN:
+        q = q.where(
+            (ProvaTemplate.escola_id == usuario.escola_id) | (ProvaTemplate.escola_id.is_(None))
+        )
+    dados = sessao.scalars(q).all()
+    return {
+        "dados": [
+            {
+                "id": str(t.id),
+                "nome": t.nome,
+                "descricao": t.descricao,
+                "escolaId": str(t.escola_id) if t.escola_id else None,
+                "parametros": t.parametros_json,
+                "criadoPor": str(t.criado_por_id),
+                "criadoEm": t.criado_em.isoformat() if t.criado_em else None,
+            }
+            for t in dados
+        ]
+    }
+
+
+@router.post(
+    "/gestor/prova-templates",
+    status_code=201,
+    dependencies=[Depends(montadores_prova)],
+)
+def criar_template_prova(
+    corpo: dict,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    nome = str(corpo.get("nome") or "").strip()
+    if len(nome) < 3:
+        raise HTTPException(status_code=422, detail="Nome do template e obrigatorio.")
+    parametros = corpo.get("parametros") if isinstance(corpo.get("parametros"), dict) else {}
+    escola_id = usuario.escola_id if usuario.perfil != PerfilUsuario.ADMIN else corpo.get("escolaId")
+    template = ProvaTemplate(
+        nome=nome,
+        descricao=corpo.get("descricao"),
+        escola_id=escola_id,
+        criado_por_id=usuario.id,
+        parametros_json=parametros,
+    )
+    sessao.add(template)
+    sessao.flush()
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="criar_template_prova",
+        alvo_tipo="prova_template",
+        alvo_id=template.id,
+        detalhes=f"Criou template de prova {template.nome}.",
+        request=request,
+    )
+    sessao.commit()
+    return {"id": str(template.id), "nome": template.nome, "parametros": template.parametros_json}
+
+
+@router.post(
+    "/gestor/prova-templates/{template_id}/gerar",
+    status_code=201,
+    dependencies=[Depends(montadores_prova)],
+)
+def gerar_prova_por_template(
+    template_id: int,
+    corpo: dict,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    template = sessao.get(ProvaTemplate, template_id)
+    if template is None or not template.ativo:
+        raise HTTPException(status_code=404, detail="Template nao encontrado.")
+    if usuario.perfil != PerfilUsuario.ADMIN and template.escola_id not in (None, usuario.escola_id):
+        raise HTTPException(status_code=403, detail="Template fora do seu escopo.")
+    parametros = {**(template.parametros_json or {}), **(corpo or {})}
+    return gerar_simulado_automaticamente(parametros, request, usuario, sessao)
+
+
 def _usuario_aluno_card(u: Usuario, aluno: Aluno) -> dict:
     card = _usuario_card(u)
     card["adaptacoes"] = aluno.perfil_cognitivo or []
@@ -1504,7 +1876,7 @@ def curar_simulado(
                 simulado_id=sim.id,
                 questao_id=qq.id,
                 ordem_questao=ordem,
-                alternativas_ordem=[],
+                alternativas_ordem=[alt.id for alt in qq.alternativas],
             )
         )
     sim.status = StatusSimulado.GERADO
@@ -1570,6 +1942,7 @@ def montar_prova(
     ids_raw = corpo.get("questaoIds") or []
     vistos: set[int] = set()
     questoes_ok: list[int] = []
+    questoes_por_id: dict[int, Questao] = {}
     for x in ids_raw:
         try:
             qid = int(x)
@@ -1580,6 +1953,7 @@ def montar_prova(
         questao = sessao.get(Questao, qid)
         if questao is not None and _questao_permitida_para_prova(sessao, usuario, questao):
             questoes_ok.append(qid)
+            questoes_por_id[qid] = questao
             vistos.add(qid)
     if not questoes_ok:
         raise HTTPException(
@@ -1589,13 +1963,14 @@ def montar_prova(
     sessao.query(SimuladoQuestao).filter(
         SimuladoQuestao.simulado_id == sim.id
     ).delete()
-    for ordem, qid in enumerate(questoes_ok):
+    for ordem, qid in enumerate(questoes_ok, start=1):
+        questao = questoes_por_id[qid]
         sessao.add(
             SimuladoQuestao(
                 simulado_id=sim.id,
                 questao_id=qid,
                 ordem_questao=ordem,
-                alternativas_ordem=[],
+                alternativas_ordem=[alt.id for alt in questao.alternativas],
             )
         )
     sim.status = StatusSimulado.GERADO
@@ -1617,6 +1992,57 @@ def montar_prova(
     }
 
 
+@router.get(
+    "/gestor/simulados/{simulado_id}/validar", dependencies=[Depends(montadores_prova)]
+)
+def validar_prova(
+    simulado_id: int,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+    return {
+        "simuladoId": str(sim.id),
+        "status": _status_simulado_front(sim.status),
+        **prova_avancada_service.validar_simulado(sim),
+    }
+
+
+@router.get(
+    "/gestor/simulados/{simulado_id}/preview", dependencies=[Depends(montadores_prova)]
+)
+def preview_prova(
+    simulado_id: int,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+    snapshot = prova_avancada_service.snapshot_mais_recente(sessao, sim.id)
+    questoes_snapshot = (
+        snapshot.questoes_json if snapshot else prova_avancada_service.montar_questoes_snapshot(sim)
+    )
+    return {
+        "simulado": _serializar_simulado(sim),
+        "snapshot": (
+            {
+                "id": str(snapshot.id),
+                "versao": snapshot.versao,
+                "criadoEm": snapshot.criado_em.isoformat() if snapshot.criado_em else None,
+            }
+            if snapshot
+            else None
+        ),
+        "questoes": questoes_snapshot,
+        "validacao": prova_avancada_service.validar_simulado(sim),
+    }
+
+
 @router.post(
     "/gestor/simulados/{simulado_id}/liberar", dependencies=[Depends(montadores_prova)]
 )
@@ -1630,7 +2056,25 @@ def liberar_simulado(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_simulado(sessao, usuario, sim)
+    validacao = prova_avancada_service.validar_simulado(sim)
+    if not validacao["ok"]:
+        raise HTTPException(status_code=422, detail=validacao)
+    snapshot = prova_avancada_service.criar_ou_obter_snapshot(
+        sessao, simulado=sim, usuario=usuario,
+    )
     sim.status = StatusSimulado.LIBERADO
+    alunos = _alunos_do_simulado(sim)
+    notificados = prova_avancada_service.notificar(
+        sessao,
+        destinatarios=[a.usuario for a in alunos if a.usuario],
+        tipo="prova_liberada",
+        titulo="Prova liberada",
+        mensagem=f"A prova {sim.titulo} esta disponivel para resposta.",
+        origem_id=str(sim.id),
+        origem_tipo="simulado",
+        acao_url=f"/aluno/simulado/{sim.id}/instrucoes",
+        acao_label="Iniciar prova",
+    )
     auditoria_service.registrar(
         sessao,
         usuario=usuario,
@@ -1645,6 +2089,179 @@ def liberar_simulado(
         "id": str(sim.id),
         "status": "liberado",
         "liberadoEm": datetime.now(timezone.utc).isoformat(),
+        "snapshotId": str(snapshot.id),
+        "validacao": validacao,
+        "notificados": notificados,
+    }
+
+
+def _aluno_no_escopo_da_prova(usuario: Usuario, simulado: Simulado, aluno: Aluno) -> bool:
+    if usuario.perfil == PerfilUsuario.ADMIN:
+        return True
+    escola_simulado = simulado.turma.escola_id if simulado.turma else None
+    escola_aluno = aluno.turma.escola_id if aluno.turma else None
+    return escola_simulado is not None and escola_simulado == escola_aluno == usuario.escola_id
+
+
+@router.post(
+    "/gestor/simulados/{simulado_id}/inscricoes/lote",
+    status_code=201,
+    dependencies=[Depends(montadores_prova)],
+)
+def inscrever_alunos_lote(
+    simulado_id: int,
+    corpo: dict,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+    aluno_ids = []
+    for raw in corpo.get("alunoIds") or corpo.get("aluno_ids") or []:
+        try:
+            aluno_ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not aluno_ids:
+        raise HTTPException(status_code=422, detail="Informe alunoIds.")
+
+    inscritos = []
+    rejeitados = []
+    for aluno_id in dict.fromkeys(aluno_ids):
+        aluno = sessao.get(Aluno, aluno_id)
+        if aluno is None:
+            rejeitados.append({"alunoId": aluno_id, "motivo": "Aluno nao encontrado."})
+            continue
+        if not _aluno_no_escopo_da_prova(usuario, sim, aluno):
+            rejeitados.append({"alunoId": aluno_id, "motivo": "Aluno fora do escopo da prova."})
+            continue
+        inscricao = _inscricao_simulado_aluno(sessao, aluno.id, sim.id)
+        if inscricao is None:
+            inscricao = SimuladoInscricao(
+                simulado_id=sim.id,
+                aluno_id=aluno.id,
+                inscrito_por_id=usuario.id,
+                status="inscrito",
+            )
+            sessao.add(inscricao)
+        else:
+            inscricao.status = "inscrito"
+            inscricao.inscrito_por_id = usuario.id
+            inscricao.inscrito_em = datetime.now(timezone.utc)
+        inscritos.append(aluno)
+
+    prova_avancada_service.notificar(
+        sessao,
+        destinatarios=[a.usuario for a in inscritos if a.usuario],
+        tipo="inscricao_prova",
+        titulo="Voce foi inscrito em uma prova",
+        mensagem=f"Voce foi inscrito na prova {sim.titulo}.",
+        origem_id=str(sim.id),
+        origem_tipo="simulado",
+        acao_url=f"/aluno/simulado/{sim.id}/instrucoes",
+        acao_label="Ver prova",
+    )
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="inscrever_alunos_lote",
+        alvo_tipo="simulado",
+        alvo_id=sim.id,
+        detalhes=f"Inscreveu {len(inscritos)} alunos no simulado {sim.titulo}.",
+        request=request,
+    )
+    sessao.commit()
+    return {
+        "simuladoId": str(sim.id),
+        "inscritos": [{"alunoId": str(a.id), "nome": a.usuario.nome if a.usuario else ""} for a in inscritos],
+        "rejeitados": rejeitados,
+        "totalInscritos": len(inscritos),
+    }
+
+
+@router.post(
+    "/gestor/simulados/{simulado_id}/inscricoes/turma",
+    status_code=201,
+    dependencies=[Depends(montadores_prova)],
+)
+def inscrever_turma_inteira(
+    simulado_id: int,
+    request: Request,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+    aluno_ids = [a.id for a in (sim.turma.alunos if sim.turma else [])]
+    return inscrever_alunos_lote(
+        simulado_id,
+        {"alunoIds": aluno_ids},
+        request,
+        usuario,
+        sessao,
+    )
+
+
+@router.post(
+    "/gestor/simulados/{simulado_id}/alunos/{aluno_id}/reabrir",
+    dependencies=[Depends(admin_gestor_suporte)],
+)
+def reabrir_tentativa_aluno(
+    simulado_id: int,
+    aluno_id: int,
+    corpo: dict,
+    request: Request,
+    usuario: Usuario = Depends(admin_gestor_suporte),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    sim = sessao.get(Simulado, simulado_id)
+    aluno = sessao.get(Aluno, aluno_id)
+    if sim is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    if aluno is None:
+        raise HTTPException(status_code=404, detail="Aluno nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, sim)
+    if not _aluno_no_escopo_da_prova(usuario, sim, aluno):
+        raise HTTPException(status_code=403, detail="Aluno fora do escopo da prova.")
+    motivo = str(corpo.get("motivo") or "").strip()
+    if len(motivo) < 5:
+        raise HTTPException(status_code=422, detail="Motivo da reabertura e obrigatorio.")
+    tentativa = prova_avancada_service.reabrir_para_aluno(
+        sessao, simulado=sim, aluno=aluno, usuario=usuario, motivo=motivo,
+    )
+    prova_avancada_service.notificar(
+        sessao,
+        destinatarios=[aluno.usuario] if aluno.usuario else [],
+        tipo="tentativa_reaberta",
+        titulo="Tentativa reaberta",
+        mensagem=f"Sua tentativa da prova {sim.titulo} foi reaberta.",
+        origem_id=str(sim.id),
+        origem_tipo="simulado",
+        acao_url=f"/aluno/simulado/{sim.id}/instrucoes",
+        acao_label="Responder novamente",
+    )
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="reabrir_tentativa",
+        alvo_tipo="simulado",
+        alvo_id=sim.id,
+        detalhes=f"Reabriu tentativa do aluno #{aluno.id}. Motivo: {motivo}",
+        request=request,
+    )
+    sessao.commit()
+    return {
+        "ok": True,
+        "simuladoId": str(sim.id),
+        "alunoId": str(aluno.id),
+        "tentativaId": str(tentativa.id),
+        "numero": tentativa.numero,
+        "status": tentativa.status,
     }
 
 
@@ -1666,13 +2283,23 @@ def acompanhar_simulado(
     ).all()
     por_aluno: dict[int, int] = {}
     for r in respostas:
-        por_aluno[r.aluno_id] = por_aluno.get(r.aluno_id, 0) + 1
+        if r.status == "respondida" and r.alternativa_id is not None:
+            por_aluno[r.aluno_id] = por_aluno.get(r.aluno_id, 0) + 1
+    tentativas = sessao.scalars(
+        select(SimuladoTentativa).where(SimuladoTentativa.simulado_id == sim.id)
+    ).all()
+    tentativas_por_aluno = {t.aluno_id: t for t in sorted(tentativas, key=lambda x: x.numero)}
 
     agora = datetime.now(timezone.utc).isoformat()
     alunos = []
     for a in _alunos_do_simulado(sim):
         respondidas = por_aluno.get(a.id, 0)
-        if respondidas == 0:
+        tentativa = tentativas_por_aluno.get(a.id)
+        if tentativa and tentativa.status == "finalizada":
+            status = "finalizado"
+        elif tentativa and tentativa.status == "em_andamento":
+            status = "em_andamento"
+        elif respondidas == 0:
             status = "nao_iniciou"
         elif total_q and respondidas >= total_q:
             status = "finalizado"
@@ -1688,7 +2315,11 @@ def acompanhar_simulado(
                 "totalQuestoes": total_q,
                 "tempoRestanteSegundos": 0,
                 "conexaoOk": True,
-                "ultimaAtividadeEm": agora,
+                "ultimaAtividadeEm": (
+                    tentativa.ultima_atividade_em.isoformat()
+                    if tentativa and tentativa.ultima_atividade_em
+                    else agora
+                ),
             }
         )
     contagens = {
@@ -1875,11 +2506,20 @@ def aluno_iniciar(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim)
+    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+        sessao, simulado=sim, aluno=aluno,
+    )
+    prova_avancada_service.marcar_tentativa_iniciada(tentativa)
+    inscricao = _inscricao_simulado_aluno(sessao, aluno.id, sim.id)
+    if inscricao is not None and inscricao.status != "finalizado":
+        inscricao.status = "em_andamento"
+    sessao.commit()
     tempo = int(_normalizar_parametros_simulado(sim).get("tempoLimiteMinutos", 60)) * 60
     agora = datetime.now(timezone.utc).isoformat()
     return {
         "simuladoId": str(sim.id),
         "alunoId": str(aluno.id),
+        "tentativaId": str(tentativa.id),
         "questaoAtualIndice": 0,
         "iniciadoEm": agora,
         "ultimaAtividadeEm": agora,
@@ -1912,57 +2552,37 @@ def aluno_responder(
 
     alt_raw = corpo.get("alternativaId")
     tempo_gasto = _normalizar_tempo_gasto(corpo.get("tempoGastoSegundos"))
-    agora = datetime.now(timezone.utc)
-    if alt_raw:
-        alternativa_id = int(alt_raw)
-        alt = sessao.get(Alternativa, alternativa_id)
-        if alt is None or alt.questao_id != questao_id:
-            raise HTTPException(status_code=400, detail="Alternativa inválida para a questão.")
-        correta = bool(alt.correta) if alt else False
-        existente = sessao.scalar(
-            select(Resposta).where(
-                Resposta.aluno_id == aluno.id,
-                Resposta.simulado_id == simulado_id,
-                Resposta.questao_id == questao_id,
-            )
-        )
-        if existente:
-            existente.alternativa_id = alternativa_id
-            existente.correta = correta
-            existente.respondida_em = agora
-            existente.tempo_gasto_segundos = tempo_gasto
-        else:
-            sessao.add(
-                Resposta(
-                    aluno_id=aluno.id,
-                    simulado_id=simulado_id,
-                    questao_id=questao_id,
-                    alternativa_id=alternativa_id,
-                    correta=correta,
-                    respondida_em=agora,
-                    tempo_gasto_segundos=tempo_gasto,
-                )
-            )
-        auditoria_service.registrar(
-            sessao,
-            usuario=usuario,
-            tipo="responder_questao",
-            alvo_tipo="simulado",
-            alvo_id=simulado_id,
-            detalhes=f"Aluno #{aluno.id} respondeu questao #{questao_id}.",
-            request=request,
-        )
-        sessao.commit()
-
+    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+        sessao, simulado=sim, aluno=aluno,
+    )
+    prova_avancada_service.marcar_tentativa_iniciada(tentativa)
+    resposta = _salvar_resposta_aluno(
+        sessao,
+        aluno=aluno,
+        simulado=sim,
+        tentativa=tentativa,
+        questao_id=questao_id,
+        alternativa_raw=alt_raw,
+        tempo_gasto=tempo_gasto,
+    )
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="responder_questao",
+        alvo_tipo="simulado",
+        alvo_id=simulado_id,
+        detalhes=f"Aluno #{aluno.id} respondeu questao #{questao_id}.",
+        request=request,
+    )
+    sessao.commit()
     return {
         "questaoId": str(questao_id),
-        "alternativaId": str(alt_raw) if alt_raw else None,
-        "status": "respondida" if alt_raw else "em_branco",
+        "alternativaId": str(resposta.alternativa_id) if resposta.alternativa_id else None,
+        "status": resposta.status,
         "tempoGastoSegundos": tempo_gasto,
-        "trocasDeResposta": 0,
-        "respondidaEm": agora.isoformat(),
+        "trocasDeResposta": int(resposta.trocas_de_resposta or 0),
+        "respondidaEm": resposta.respondida_em.isoformat() if resposta.respondida_em else None,
     }
-
 
 @router.post("/aluno/simulado/{simulado_id}/finalizar")
 def aluno_finalizar(
@@ -1977,47 +2597,36 @@ def aluno_finalizar(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim, exigir_liberado=False)
-    for resposta in (corpo or {}).get("respostas", []) or []:
-        alt_raw = resposta.get("alternativaId")
-        if not alt_raw:
-            continue
-        try:
-            questao_id = int(resposta.get("questaoId"))
-            alternativa_id = int(alt_raw)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Resposta invalida.") from exc
-        if questao_id not in {sq.questao_id for sq in sim.questoes}:
-            raise HTTPException(status_code=403, detail="Questao fora deste simulado.")
-        alt = sessao.get(Alternativa, alternativa_id)
-        if alt is None or alt.questao_id != questao_id:
-            raise HTTPException(status_code=400, detail="Alternativa invalida para a questao.")
-        correta = bool(alt.correta)
-        tempo_gasto = _normalizar_tempo_gasto(resposta.get("tempoGastoSegundos"))
-        existente = sessao.scalar(
-            select(Resposta).where(
-                Resposta.aluno_id == aluno.id,
-                Resposta.simulado_id == simulado_id,
-                Resposta.questao_id == questao_id,
-            )
+    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+        sessao, simulado=sim, aluno=aluno,
+    )
+    prova_avancada_service.marcar_tentativa_iniciada(tentativa)
+    respostas_payload = {
+        str(item.get("questaoId")): item
+        for item in ((corpo or {}).get("respostas", []) or [])
+        if isinstance(item, dict)
+    }
+    for sq in sorted(sim.questoes, key=lambda item: item.ordem_questao):
+        payload = respostas_payload.get(str(sq.questao_id), {})
+        _salvar_resposta_aluno(
+            sessao,
+            aluno=aluno,
+            simulado=sim,
+            tentativa=tentativa,
+            questao_id=sq.questao_id,
+            alternativa_raw=payload.get("alternativaId"),
+            tempo_gasto=_normalizar_tempo_gasto(payload.get("tempoGastoSegundos")),
         )
-        agora_resposta = datetime.now(timezone.utc)
-        if existente:
-            existente.alternativa_id = alternativa_id
-            existente.correta = correta
-            existente.respondida_em = agora_resposta
-            existente.tempo_gasto_segundos = tempo_gasto
-        else:
-            sessao.add(
-                Resposta(
-                    aluno_id=aluno.id,
-                    simulado_id=simulado_id,
-                    questao_id=questao_id,
-                    alternativa_id=alternativa_id,
-                    correta=correta,
-                    respondida_em=agora_resposta,
-                    tempo_gasto_segundos=tempo_gasto,
-                )
-            )
+    respostas_atuais = sessao.scalars(
+        select(Resposta).where(
+            Resposta.aluno_id == aluno.id,
+            Resposta.simulado_id == sim.id,
+        )
+    ).all()
+    tempo_total = sum(int(r.tempo_gasto_segundos or 0) for r in respostas_atuais)
+    prova_avancada_service.marcar_tentativa_finalizada(
+        tentativa, tempo_total_segundos=tempo_total,
+    )
     auditoria_service.registrar(
         sessao,
         usuario=usuario,
@@ -2028,26 +2637,21 @@ def aluno_finalizar(
         request=request,
     )
     _marcar_simulado_finalizado_para_aluno(sessao, aluno, sim)
-    sessao.commit()
     resultado = _computar_resultado(sessao, aluno.id, sim, incluir_sem_respostas=True)
-    if resultado is None:
-        agora = datetime.now(timezone.utc).isoformat()
-        resultado = {
-            "id": f"res_{aluno.id}_{sim.id}",
-            "simuladoId": str(sim.id),
-            "alunoId": str(aluno.id),
-            "respostas": [],
-            "notaFinal": 0.0,
-            "acertos": 0,
-            "erros": 0,
-            "emBranco": len(sim.questoes),
-            "tempoTotalSegundos": 0,
-            "iniciadoEm": agora,
-            "finalizadoEm": agora,
-            "desempenhoPorCompetencia": [],
-        }
+    prova_avancada_service.salvar_resultado(sessao, tentativa=tentativa, resultado=resultado or {})
+    prova_avancada_service.notificar(
+        sessao,
+        destinatarios=[usuario],
+        tipo="resultado_disponivel",
+        titulo="Resultado disponivel",
+        mensagem=f"O resultado da prova {sim.titulo} ja esta disponivel.",
+        origem_id=str(sim.id),
+        origem_tipo="simulado",
+        acao_url=f"/aluno/simulado/{sim.id}/resultado",
+        acao_label="Ver resultado",
+    )
+    sessao.commit()
     return resultado
-
 
 # ---------------------------------------------------------------------------
 # SUPORTE — nota e pedido de apoio presencial (persistem no aluno)

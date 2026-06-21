@@ -158,8 +158,111 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         ON simulado_inscricoes (aluno_id)
         """,
         """
+        CREATE TABLE IF NOT EXISTS simulado_snapshots (
+            id SERIAL PRIMARY KEY,
+            simulado_id INTEGER NOT NULL REFERENCES simulados(id) ON DELETE CASCADE,
+            versao INTEGER NOT NULL DEFAULT 1,
+            titulo VARCHAR(160) NOT NULL,
+            parametros_json JSON NOT NULL DEFAULT '{}'::json,
+            questoes_json JSON NOT NULL DEFAULT '[]'::json,
+            total_questoes INTEGER NOT NULL DEFAULT 0,
+            criado_por_id INTEGER REFERENCES usuarios(id),
+            criado_em TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            CONSTRAINT uq_simulado_snapshot_versao UNIQUE (simulado_id, versao)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_simulado_snapshots_simulado
+        ON simulado_snapshots (simulado_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS simulado_tentativas (
+            id SERIAL PRIMARY KEY,
+            simulado_id INTEGER NOT NULL REFERENCES simulados(id) ON DELETE CASCADE,
+            aluno_id INTEGER NOT NULL REFERENCES alunos(id),
+            snapshot_id INTEGER REFERENCES simulado_snapshots(id),
+            numero INTEGER NOT NULL DEFAULT 1,
+            status VARCHAR(24) NOT NULL DEFAULT 'nao_iniciado',
+            iniciado_em TIMESTAMP WITH TIME ZONE,
+            ultima_atividade_em TIMESTAMP WITH TIME ZONE,
+            finalizado_em TIMESTAMP WITH TIME ZONE,
+            reaberto_em TIMESTAMP WITH TIME ZONE,
+            reaberto_por_id INTEGER REFERENCES usuarios(id),
+            motivo_reabertura TEXT,
+            tempo_total_segundos INTEGER NOT NULL DEFAULT 0,
+            CONSTRAINT uq_simulado_tentativa_numero UNIQUE (simulado_id, aluno_id, numero)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_simulado_tentativas_aluno_status
+        ON simulado_tentativas (aluno_id, status)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_simulado_tentativas_simulado_status
+        ON simulado_tentativas (simulado_id, status)
+        """,
+        """
         ALTER TABLE respostas
         ADD COLUMN IF NOT EXISTS tempo_gasto_segundos INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE respostas
+        ADD COLUMN IF NOT EXISTS tentativa_id INTEGER REFERENCES simulado_tentativas(id)
+        """,
+        """
+        ALTER TABLE respostas
+        ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'respondida'
+        """,
+        """
+        ALTER TABLE respostas
+        ADD COLUMN IF NOT EXISTS trocas_de_resposta INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE respostas
+        ALTER COLUMN alternativa_id DROP NOT NULL
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS resultados_simulado (
+            id SERIAL PRIMARY KEY,
+            simulado_id INTEGER NOT NULL REFERENCES simulados(id) ON DELETE CASCADE,
+            aluno_id INTEGER NOT NULL REFERENCES alunos(id),
+            tentativa_id INTEGER NOT NULL REFERENCES simulado_tentativas(id) ON DELETE CASCADE,
+            snapshot_id INTEGER REFERENCES simulado_snapshots(id),
+            nota_final FLOAT NOT NULL DEFAULT 0,
+            preenchidas INTEGER NOT NULL DEFAULT 0,
+            acertos INTEGER NOT NULL DEFAULT 0,
+            erros INTEGER NOT NULL DEFAULT 0,
+            em_branco INTEGER NOT NULL DEFAULT 0,
+            tempo_total_segundos INTEGER NOT NULL DEFAULT 0,
+            resultado_json JSON NOT NULL DEFAULT '{}'::json,
+            criado_em TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            CONSTRAINT uq_resultado_tentativa UNIQUE (tentativa_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_resultados_simulado_aluno
+        ON resultados_simulado (aluno_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_resultados_simulado_simulado
+        ON resultados_simulado (simulado_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS prova_templates (
+            id SERIAL PRIMARY KEY,
+            nome VARCHAR(160) NOT NULL,
+            descricao TEXT,
+            escola_id INTEGER REFERENCES escolas(id),
+            criado_por_id INTEGER NOT NULL REFERENCES usuarios(id),
+            parametros_json JSON NOT NULL DEFAULT '{}'::json,
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            criado_em TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            atualizado_em TIMESTAMP WITH TIME ZONE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_prova_templates_escola_ativo
+        ON prova_templates (escola_id, ativo)
         """,
         """
         UPDATE usuarios

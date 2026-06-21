@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   useCriarProvaRascunho,
+  useGerarProvaAutomatica,
   useLiberarProva,
   useMontarProva,
   useProvaTurmas,
@@ -82,6 +83,7 @@ export function ConstrutorProva() {
   const [filtroMateria, setFiltroMateria] = useState("todos");
   const [filtroNivel, setFiltroNivel] = useState("todos");
   const [paginaBanco, setPaginaBanco] = useState(1);
+  const [quantidadeAutomatica, setQuantidadeAutomatica] = useState(10);
   const [selecionadas, setSelecionadas] = useState<Questao[]>([]);
   const [dialogAberto, setDialogAberto] = useState(false);
   const [resultado, setResultado] = useState<{
@@ -102,6 +104,7 @@ export function ConstrutorProva() {
   const totalPaginasBanco = metaBanco?.totalPaginas ?? 1;
 
   const criarRascunho = useCriarProvaRascunho();
+  const gerarAutomatica = useGerarProvaAutomatica();
   const atualizarSimulado = useAtualizarSimulado();
   const montar = useMontarProva();
   const liberar = useLiberarProva();
@@ -114,6 +117,10 @@ export function ConstrutorProva() {
         ? "/gestor/dashboard"
         : "/professor/dashboard";
   const destinoProvas = baseProvasPorPerfil(perfil, pathname);
+  const turmaSelecionada = useMemo(
+    () => turmas.find((t) => t.id === turmaId),
+    [turmaId, turmas],
+  );
 
   useEffect(() => {
     const idTimeout = window.setTimeout(() => {
@@ -155,6 +162,7 @@ export function ConstrutorProva() {
     nome.trim().length >= 3 && Boolean(turmaId) && selecionadas.length > 0;
   const salvando =
     criarRascunho.isPending ||
+    gerarAutomatica.isPending ||
     atualizarSimulado.isPending ||
     montar.isPending ||
     liberar.isPending;
@@ -164,6 +172,44 @@ export function ConstrutorProva() {
   }
   function remover(id: string) {
     setSelecionadas((s) => s.filter((q) => q.id !== id));
+  }
+
+  async function gerarPorFiltros() {
+    if (!turmaId || gerarAutomatica.isPending) return;
+    const quantidade = Math.max(1, Math.min(100, quantidadeAutomatica || 10));
+    const nomeProva =
+      nome.trim() ||
+      `Prova automática ${turmaSelecionada?.nome ? `· ${turmaSelecionada.nome}` : ""}`.trim();
+    try {
+      const resposta = await gerarAutomatica.mutateAsync({
+        nome: nomeProva,
+        turmaId,
+        serie:
+          filtroSerie !== "todos"
+            ? (filtroSerie as SerieEscolar)
+            : (turmaSelecionada?.serie as SerieEscolar | undefined),
+        materias:
+          filtroMateria !== "todos" ? [filtroMateria as Materia] : undefined,
+        niveis:
+          filtroNivel !== "todos" ? [filtroNivel as NivelDificuldade] : undefined,
+        quantidade,
+        quantidadeQuestoes: quantidade,
+        tempoLimiteMinutos: 60,
+        evitarQuestoesJaUsadas: false,
+      });
+      setNome(resposta.simulado.parametros.nome || nomeProva);
+      setIdEdicao(resposta.simulado.id);
+      setEdicaoCarregada(true);
+      setSelecionadas(resposta.questoesSelecionadas);
+      toast.success(
+        `${resposta.questoesSelecionadas.length} questões selecionadas pelo banco`,
+      );
+      for (const aviso of resposta.avisos ?? []) {
+        toast.message(aviso);
+      }
+    } catch {
+      toast.error("Não foi possível gerar a prova com esses filtros.");
+    }
   }
 
   async function salvar(liberarAgora: boolean) {
@@ -213,6 +259,11 @@ export function ConstrutorProva() {
     setNome("");
     setTurmaId("");
     setBusca("");
+    setFiltroSerie("todos");
+    setFiltroMateria("todos");
+    setFiltroNivel("todos");
+    setPaginaBanco(1);
+    setQuantidadeAutomatica(10);
     setSelecionadas([]);
     setResultado(null);
   }
@@ -405,6 +456,38 @@ export function ConstrutorProva() {
               Limpar filtros
             </button>
           )}
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border bg-background p-3 sm:flex-row sm:items-end">
+            <div className="w-full sm:max-w-28">
+              <Label htmlFor="qtd-automatica" className="text-xs">
+                Quantidade
+              </Label>
+              <Input
+                id="qtd-automatica"
+                type="number"
+                min={1}
+                max={100}
+                value={quantidadeAutomatica}
+                onChange={(e) =>
+                  setQuantidadeAutomatica(Number(e.target.value) || 1)
+                }
+                className="mt-1"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full gap-2 sm:flex-1"
+              disabled={!turmaId || gerarAutomatica.isPending}
+              onClick={gerarPorFiltros}
+            >
+              {gerarAutomatica.isPending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Sparkles className="size-4" aria-hidden />
+              )}
+              Gerar automática
+            </Button>
+          </div>
           <ul className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
             {bancoQuery.isLoading && (
               <li className="py-8 text-center text-sm text-muted-foreground">

@@ -158,7 +158,7 @@ def aluno_tem_acesso(sessao: Session, *, aluno_id: int, simulado: Simulado) -> b
         )
     )
     if inscricao is not None:
-        return inscricao.status == "inscrito"
+        return inscricao.status in {"inscrito", "em_andamento", "reaberto"}
     return aluno.turma_id is not None and aluno.turma_id == simulado.turma_id
 
 
