@@ -259,7 +259,13 @@ def _serializar_simulado(s: Simulado) -> dict:
     }
 
 
-def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> dict | None:
+def _computar_resultado(
+    sessao: Session,
+    aluno_id: int,
+    simulado: Simulado,
+    *,
+    incluir_sem_respostas: bool = False,
+) -> dict | None:
     """Calcula o ResultadoSimulado do aluno a partir das respostas no banco."""
     ids_questoes = {sq.questao_id for sq in simulado.questoes}
     respostas = sessao.scalars(
@@ -270,7 +276,7 @@ def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> d
     # Conta só respostas de questões que AINDA estão na prova — evita contagem
     # inflada de erros se uma questão foi removida da prova após ser respondida.
     respostas = [r for r in respostas if r.questao_id in ids_questoes]
-    if not respostas:
+    if not respostas and not incluir_sem_respostas:
         return None
     total_questoes = len(ids_questoes)
     acertos = sum(1 for r in respostas if r.correta)
@@ -281,6 +287,12 @@ def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> d
     _tempos = [r.respondida_em for r in respostas if r.respondida_em]
     primeira = min(_tempos) if _tempos else None
     ultima = max(_tempos) if _tempos else None
+    inscricao = _inscricao_simulado_aluno(sessao, aluno_id, simulado.id)
+    finalizado_em = (
+        ultima
+        or (inscricao.inscrito_em if inscricao and inscricao.status == "finalizado" else None)
+        or simulado.criado_em
+    )
     # Tempo real gasto = da 1ª à última resposta (autosave grava cada uma na hora).
     tempo_total = (
         int((ultima - primeira).total_seconds()) if primeira and ultima else 0
@@ -301,12 +313,13 @@ def _computar_resultado(sessao: Session, aluno_id: int, simulado: Simulado) -> d
             for r in respostas
         ],
         "notaFinal": nota,
+        "preenchidas": respondidas,
         "acertos": acertos,
         "erros": erros,
         "emBranco": em_branco,
         "tempoTotalSegundos": tempo_total,
-        "iniciadoEm": primeira.isoformat() if primeira else None,
-        "finalizadoEm": ultima.isoformat() if ultima else None,
+        "iniciadoEm": primeira.isoformat() if primeira else (finalizado_em.isoformat() if finalizado_em else None),
+        "finalizadoEm": finalizado_em.isoformat() if finalizado_em else None,
         "desempenhoPorCompetencia": [],
     }
 
@@ -328,6 +341,43 @@ def _simulado_tem_resposta_do_aluno(sessao: Session, aluno: Aluno, simulado: Sim
     )
 
 
+def _inscricao_simulado_aluno(
+    sessao: Session, aluno_id: int, simulado_id: int
+) -> SimuladoInscricao | None:
+    return sessao.scalar(
+        select(SimuladoInscricao).where(
+            SimuladoInscricao.aluno_id == aluno_id,
+            SimuladoInscricao.simulado_id == simulado_id,
+        )
+    )
+
+
+def _simulado_finalizado_por_aluno(
+    sessao: Session, aluno: Aluno, simulado: Simulado
+) -> bool:
+    inscricao = _inscricao_simulado_aluno(sessao, aluno.id, simulado.id)
+    return inscricao is not None and inscricao.status == "finalizado"
+
+
+def _marcar_simulado_finalizado_para_aluno(
+    sessao: Session, aluno: Aluno, simulado: Simulado
+) -> None:
+    inscricao = _inscricao_simulado_aluno(sessao, aluno.id, simulado.id)
+    agora = datetime.now(timezone.utc)
+    if inscricao is None:
+        sessao.add(
+            SimuladoInscricao(
+                aluno_id=aluno.id,
+                simulado_id=simulado.id,
+                status="finalizado",
+                inscrito_em=agora,
+            )
+        )
+        return
+    inscricao.status = "finalizado"
+    inscricao.inscrito_em = agora
+
+
 def _exigir_acesso_aluno_simulado(
     sessao: Session,
     aluno: Aluno,
@@ -344,6 +394,34 @@ def _exigir_acesso_aluno_simulado(
         raise HTTPException(status_code=403, detail="Simulado fora do seu escopo.")
     if exigir_liberado and not ja_respondeu and _status_simulado_front(simulado.status) != "liberado":
         raise HTTPException(status_code=403, detail="Simulado ainda não liberado.")
+
+
+def _exigir_acesso_aluno_simulado_v2(
+    sessao: Session,
+    aluno: Aluno,
+    simulado: Simulado,
+    *,
+    exigir_liberado: bool = True,
+    permitir_finalizado: bool = False,
+) -> None:
+    inscrito_ativo = simulado_service.aluno_tem_acesso(
+        sessao, aluno_id=aluno.id, simulado=simulado,
+    )
+    finalizado = _simulado_finalizado_por_aluno(sessao, aluno, simulado)
+    ja_respondeu = _simulado_tem_resposta_do_aluno(sessao, aluno, simulado)
+    if finalizado and not permitir_finalizado:
+        raise HTTPException(
+            status_code=409,
+            detail="Este simulado ja foi finalizado. Peca nova liberacao para responder novamente.",
+        )
+    if not inscrito_ativo and not (permitir_finalizado and (finalizado or ja_respondeu)):
+        raise HTTPException(status_code=403, detail="Simulado fora do seu escopo.")
+    if (
+        exigir_liberado
+        and not ja_respondeu
+        and _status_simulado_front(simulado.status) != "liberado"
+    ):
+        raise HTTPException(status_code=403, detail="Simulado ainda nao liberado.")
 
 
 def _turmas_do_usuario(sessao: Session, usuario: Usuario) -> list[Turma]:
@@ -545,7 +623,10 @@ def aluno_home(
             .where(Simulado.turma_id == aluno.turma_id)
             .order_by(Simulado.criado_em.desc())
         ).all():
-            if _status_simulado_front(s.status) in ("liberado", "em_andamento"):
+            if (
+                _status_simulado_front(s.status) in ("liberado", "em_andamento")
+                and simulado_service.aluno_tem_acesso(sessao, aluno_id=aluno.id, simulado=s)
+            ):
                 proximo = _serializar_simulado(s)
                 break
     if proximo is None:
@@ -562,17 +643,7 @@ def aluno_home(
                 proximo = _serializar_simulado(s)
                 break
 
-    sim_ids = sessao.scalars(
-        select(Resposta.simulado_id).where(Resposta.aluno_id == aluno.id).distinct()
-    ).all()
-    resultados = []
-    for sid in sim_ids:
-        s = sessao.get(Simulado, sid)
-        if s:
-            r = _computar_resultado(sessao, aluno.id, s)
-            if r:
-                resultados.append(r)
-    resultados.sort(key=lambda x: x["finalizadoEm"] or "", reverse=True)
+    resultados = _resultados_do_aluno(sessao, aluno)
     evolucao = [
         {"simuladoId": r["simuladoId"], "nota": r["notaFinal"], "data": r["finalizadoEm"]}
         for r in sorted(resultados, key=lambda x: x["finalizadoEm"] or "")[-6:]
@@ -617,7 +688,7 @@ def aluno_simulado(
     s = sessao.get(Simulado, simulado_id)
     if s is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
-    _exigir_acesso_aluno_simulado(sessao, aluno, s)
+    _exigir_acesso_aluno_simulado_v2(sessao, aluno, s)
     questoes = [
         _serializar_questao(sq.questao)
         for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
@@ -656,7 +727,9 @@ def aluno_resultado(
     s = sessao.get(Simulado, simulado_id)
     if s is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
-    _exigir_acesso_aluno_simulado(sessao, aluno, s, exigir_liberado=False)
+    _exigir_acesso_aluno_simulado_v2(
+        sessao, aluno, s, exigir_liberado=False, permitir_finalizado=True
+    )
     resultado = _computar_resultado(sessao, aluno.id, s)
     if resultado is None:
         raise HTTPException(status_code=404, detail="Resultado não disponível.")
@@ -942,20 +1015,39 @@ def gestor_turmas(
 ) -> dict:
     dados = []
     for t in _turmas_do_gestor(sessao, usuario):
+        simulados = list(t.simulados or [])
+        alunos = [a for a in (t.alunos or []) if a.usuario]
         dados.append(
             {
                 "id": str(t.id),
                 "nome": t.nome or f"Turma {t.id}",
                 "escolaId": str(t.escola_id),
-                "serie": "",
+                "serie": _SERIE_NOME_PARA_CODE.get(t.serie.nome, "") if t.serie else "",
                 "turno": "matutino",
                 "anoLetivo": t.ano_letivo,
-                "alunoIds": [str(a.id) for a in t.alunos],
+                "alunoIds": [str(a.id) for a in alunos],
+                "alunos": [
+                    {
+                        "id": str(a.id),
+                        "usuarioId": str(a.usuario_id),
+                        "nome": a.usuario.nome,
+                        "email": a.usuario.email,
+                        "necessitaSuporte": bool(a.necessita_suporte),
+                    }
+                    for a in alunos[:8]
+                ],
                 "ativa": True,
                 "criadaEm": datetime.now(timezone.utc).isoformat(),
                 "escolaNome": t.escola.nome if t.escola else "",
-                "totalAlunos": len(t.alunos),
-                "totalComAdaptacao": sum(1 for a in t.alunos if a.necessita_suporte),
+                "totalAlunos": len(alunos),
+                "totalComAdaptacao": sum(1 for a in alunos if a.necessita_suporte),
+                "totalSimulados": len(simulados),
+                "simuladosLiberados": sum(
+                    1 for s in simulados if _status_simulado_front(s.status) == "liberado"
+                ),
+                "simuladosFinalizados": sum(
+                    1 for s in simulados if _status_simulado_front(s.status) == "finalizado"
+                ),
             }
         )
     return {"dados": dados}
@@ -1087,14 +1179,22 @@ def _usuario_aluno_card(u: Usuario, aluno: Aluno) -> dict:
 
 
 def _resultados_do_aluno(sessao: Session, aluno: Aluno) -> list[dict]:
-    sim_ids = sessao.scalars(
+    sim_ids = set(sessao.scalars(
         select(Resposta.simulado_id).where(Resposta.aluno_id == aluno.id).distinct()
-    ).all()
+    ).all())
+    sim_ids.update(
+        sessao.scalars(
+            select(SimuladoInscricao.simulado_id).where(
+                SimuladoInscricao.aluno_id == aluno.id,
+                SimuladoInscricao.status == "finalizado",
+            )
+        ).all()
+    )
     out = []
     for sid in sim_ids:
         s = sessao.get(Simulado, sid)
         if s:
-            r = _computar_resultado(sessao, aluno.id, s)
+            r = _computar_resultado(sessao, aluno.id, s, incluir_sem_respostas=True)
             if r:
                 out.append(r)
     out.sort(key=lambda x: x["finalizadoEm"] or "", reverse=True)
@@ -1768,7 +1868,7 @@ def aluno_iniciar(
     sim = sessao.get(Simulado, simulado_id)
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
-    _exigir_acesso_aluno_simulado(sessao, aluno, sim)
+    _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim)
     tempo = int(_normalizar_parametros_simulado(sim).get("tempoLimiteMinutos", 60)) * 60
     agora = datetime.now(timezone.utc).isoformat()
     return {
@@ -1796,7 +1896,7 @@ def aluno_responder(
     sim = sessao.get(Simulado, simulado_id)
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
-    _exigir_acesso_aluno_simulado(sessao, aluno, sim)
+    _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim)
     try:
         questao_id = int(corpo.get("questaoId"))
     except (TypeError, ValueError) as exc:
@@ -1867,7 +1967,7 @@ def aluno_finalizar(
     sim = sessao.get(Simulado, simulado_id)
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
-    _exigir_acesso_aluno_simulado(sessao, aluno, sim, exigir_liberado=False)
+    _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim, exigir_liberado=False)
     for resposta in (corpo or {}).get("respostas", []) or []:
         alt_raw = resposta.get("alternativaId")
         if not alt_raw:
@@ -1915,8 +2015,9 @@ def aluno_finalizar(
         detalhes=f"Aluno #{aluno.id} finalizou respostas do simulado #{simulado_id}.",
         request=request,
     )
+    _marcar_simulado_finalizado_para_aluno(sessao, aluno, sim)
     sessao.commit()
-    resultado = _computar_resultado(sessao, aluno.id, sim)
+    resultado = _computar_resultado(sessao, aluno.id, sim, incluir_sem_respostas=True)
     if resultado is None:
         agora = datetime.now(timezone.utc).isoformat()
         resultado = {

@@ -5,6 +5,7 @@ import { mapQuestao, type QuestaoBackend } from "@/lib/backend-maps";
 interface RespostaBackend {
   simulado: unknown;
   questoes: QuestaoBackend[];
+  respostas?: unknown[];
 }
 
 export async function GET(
@@ -20,6 +21,7 @@ export async function GET(
     return NextResponse.json({
       simulado: resp.simulado,
       questoes: (resp.questoes ?? []).map(mapQuestao),
+      respostas: resp.respostas ?? [],
     });
   } catch (erro) {
     if (erro instanceof ErroBackend) {

@@ -7,10 +7,16 @@ export async function POST(
 ): Promise<NextResponse> {
   const token = tokenDaRequisicao(request);
   const { id } = await params;
+  let body: unknown = {};
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
   try {
     const resp = await backendFetch<Record<string, unknown>>(
       `/aluno/simulado/${id}/finalizar`,
-      { method: "POST", token, body: {} },
+      { method: "POST", token, body },
     );
     return NextResponse.json(resp);
   } catch (erro) {

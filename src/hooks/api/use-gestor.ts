@@ -273,6 +273,16 @@ export interface TurmaEnriquecida extends Turma {
   escolaNome: string;
   totalAlunos: number;
   totalComAdaptacao: number;
+  totalSimulados: number;
+  simuladosLiberados: number;
+  simuladosFinalizados: number;
+  alunos?: {
+    id: string;
+    usuarioId: string;
+    nome: string;
+    email: string;
+    necessitaSuporte: boolean;
+  }[];
 }
 
 export function useGestorTurmas() {

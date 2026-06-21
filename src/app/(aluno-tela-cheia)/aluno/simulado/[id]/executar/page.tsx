@@ -500,7 +500,7 @@ export default function PaginaExecutarSimulado({
             <DialogDescription>
               {(() => {
                 const respondidas = Object.values(respostas).filter(
-                  (r) => r.status === "respondida",
+                  (r) => Boolean(r.alternativaId),
                 ).length;
                 const emBranco = totalQuestoes - respondidas;
                 if (emBranco === 0) {

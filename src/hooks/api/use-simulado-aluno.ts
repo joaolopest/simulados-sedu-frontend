@@ -15,6 +15,8 @@ export function useSimuladoAluno(id: string | undefined) {
     queryKey: ["aluno", "simulado", id],
     queryFn: () => obter<RespostaSimuladoAluno>(`/aluno/simulado/${id}`),
     enabled: Boolean(id),
-    staleTime: 5 * 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }

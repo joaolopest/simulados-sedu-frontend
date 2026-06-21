@@ -25,6 +25,8 @@ export function useAlunoHome() {
   return useQuery({
     queryKey: ["aluno", "home"],
     queryFn: () => obter<RespostaHomeAluno>("/aluno/home"),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }

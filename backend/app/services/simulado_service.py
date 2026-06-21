@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -150,16 +151,15 @@ def aluno_tem_acesso(sessao: Session, *, aluno_id: int, simulado: Simulado) -> b
     aluno = sessao.get(Aluno, aluno_id)
     if aluno is None:
         return False
-    if aluno.turma_id is not None and aluno.turma_id == simulado.turma_id:
-        return True
     inscricao = sessao.scalar(
         select(SimuladoInscricao).where(
             SimuladoInscricao.simulado_id == simulado.id,
             SimuladoInscricao.aluno_id == aluno_id,
-            SimuladoInscricao.status == "inscrito",
         )
     )
-    return inscricao is not None
+    if inscricao is not None:
+        return inscricao.status == "inscrito"
+    return aluno.turma_id is not None and aluno.turma_id == simulado.turma_id
 
 
 def inscrever_aluno(
@@ -192,6 +192,7 @@ def inscrever_aluno(
         sessao.add(inscricao)
     else:
         inscricao.status = "inscrito"
+        inscricao.inscrito_em = datetime.now(timezone.utc)
         if inscrito_por_id is not None:
             inscricao.inscrito_por_id = inscrito_por_id
     sessao.commit()
@@ -298,23 +299,45 @@ def resultado_do_aluno(sessao: Session, *, simulado_id: int, aluno_id: int) -> d
     simulado = sessao.get(Simulado, simulado_id)
     if simulado is None:
         raise ValueError(f"simulado {simulado_id} nao encontrado")
-    if not aluno_tem_acesso(sessao, aluno_id=aluno_id, simulado=simulado):
+    inscricao = sessao.scalar(
+        select(SimuladoInscricao).where(
+            SimuladoInscricao.simulado_id == simulado_id,
+            SimuladoInscricao.aluno_id == aluno_id,
+        )
+    )
+    tem_resultado = bool(
+        sessao.scalar(
+            select(Resposta.id).where(
+                Resposta.simulado_id == simulado_id,
+                Resposta.aluno_id == aluno_id,
+            )
+        )
+    )
+    if (
+        not aluno_tem_acesso(sessao, aluno_id=aluno_id, simulado=simulado)
+        and not (inscricao is not None and inscricao.status == "finalizado")
+        and not tem_resultado
+    ):
         raise ValueError("aluno nao esta inscrito neste simulado")
 
-    total_questoes = len(simulado.questoes)
+    ids_questoes = {sq.questao_id for sq in simulado.questoes}
+    total_questoes = len(ids_questoes)
     respostas = sessao.scalars(
         select(Resposta).where(
             Resposta.simulado_id == simulado_id,
             Resposta.aluno_id == aluno_id,
         )
     ).all()
+    respostas = [r for r in respostas if r.questao_id in ids_questoes]
     acertos = sum(1 for r in respostas if r.correta)
     respondidas = len(respostas)
+    erros = respondidas - acertos
     nota = round(10 * acertos / total_questoes, 2) if total_questoes else 0.0
     return {
         "simulado_id": simulado_id,
         "aluno_id": aluno_id,
         "acertos": acertos,
+        "erros": erros,
         "respondidas": respondidas,
         "total_questoes": total_questoes,
         "em_branco": max(0, total_questoes - respondidas),

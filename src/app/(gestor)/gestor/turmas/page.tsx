@@ -4,16 +4,27 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
+  BarChart3,
+  BookOpenCheck,
   Calendar,
   GraduationCap,
+  ListChecks,
   Search,
+  ShieldAlert,
   Users,
 } from "lucide-react";
 
-import { useGestorTurmas } from "@/hooks/api/use-gestor";
+import { useGestorTurmas, type TurmaEnriquecida } from "@/hooks/api/use-gestor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Tabs,
   TabsList,
@@ -44,6 +55,8 @@ export default function PaginaGestorTurmas() {
   const { data, isLoading, isError, refetch } = useGestorTurmas();
   const [busca, setBusca] = useState<string>("");
   const [turno, setTurno] = useState<TurnoFiltro>("todos");
+  const [turmaSelecionada, setTurmaSelecionada] =
+    useState<TurmaEnriquecida | null>(null);
 
   const turmasFiltradas = useMemo(() => {
     if (!data) return [];
@@ -144,10 +157,20 @@ export default function PaginaGestorTurmas() {
           <EstadoVazio busca={busca} turno={turno} />
         ) : (
           turmasFiltradas.map((turma) => (
-            <CardTurma key={turma.id} turma={turma} />
+            <CardTurma
+              key={turma.id}
+              turma={turma}
+              aoSelecionar={() => setTurmaSelecionada(turma)}
+            />
           ))
         )}
       </section>
+
+      <PainelDetalheTurma
+        turma={turmaSelecionada}
+        aberto={Boolean(turmaSelecionada)}
+        aoFechar={() => setTurmaSelecionada(null)}
+      />
     </div>
   );
 }
@@ -156,20 +179,22 @@ export default function PaginaGestorTurmas() {
 // Card de turma
 // ============================================================
 
-interface TurmaEnriquecida extends Turma {
-  totalAlunos: number;
-  totalComAdaptacao: number;
-}
-
-function CardTurma({ turma }: { turma: TurmaEnriquecida }) {
+function CardTurma({
+  turma,
+  aoSelecionar,
+}: {
+  turma: TurmaEnriquecida;
+  aoSelecionar: () => void;
+}) {
   const ehAtiva = turma.ativa;
 
   return (
-    <Link
-      href="#"
+    <button
+      type="button"
+      onClick={aoSelecionar}
       aria-label={`Detalhes da turma ${turma.nome}`}
       className={cn(
-        "group block rounded-xl border bg-card p-5",
+        "group block rounded-xl border bg-card p-5 text-left",
         "transition-all duration-200 [transition-timing-function:var(--ease-quart)]",
         "hover:-translate-y-0.5 hover:border-primary/30 hover:ring-2 hover:ring-primary/15",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -223,14 +248,174 @@ function CardTurma({ turma }: { turma: TurmaEnriquecida }) {
           <span>{ROTULOS_TURNO[turma.turno]}</span>
         </div>
         <span
-          className="inline-flex items-center gap-0.5 text-primary-text opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          className="inline-flex items-center gap-0.5 text-primary-text opacity-80 transition-opacity duration-200 group-hover:opacity-100"
           aria-hidden
         >
-          ver
+          detalhes
           <ArrowRight className="size-3 transition-transform duration-200 group-hover:translate-x-0.5" />
         </span>
       </footer>
-    </Link>
+    </button>
+  );
+}
+
+function PainelDetalheTurma({
+  turma,
+  aberto,
+  aoFechar,
+}: {
+  turma: TurmaEnriquecida | null;
+  aberto: boolean;
+  aoFechar: () => void;
+}) {
+  if (!turma) return null;
+
+  const alunos = turma.alunos ?? [];
+  const alunosOcultos = Math.max(0, turma.totalAlunos - alunos.length);
+
+  return (
+    <Sheet open={aberto} onOpenChange={(novoAberto) => !novoAberto && aoFechar()}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetHeader>
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            {turma.escolaNome || "Escola"} · {obterNomeSerie(turma.serie)}
+          </p>
+          <SheetTitle className="font-serif text-2xl tracking-tight">
+            {turma.nome}
+          </SheetTitle>
+          <SheetDescription>
+            {ROTULOS_TURNO[turma.turno]} · {turma.anoLetivo} ·{" "}
+            {turma.totalAlunos} alunos
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="grid grid-cols-2 gap-3 px-4 sm:grid-cols-4">
+          <ResumoDetalhe icone={Users} rotulo="Alunos" valor={turma.totalAlunos} />
+          <ResumoDetalhe
+            icone={ShieldAlert}
+            rotulo="Adaptações"
+            valor={turma.totalComAdaptacao}
+          />
+          <ResumoDetalhe
+            icone={BookOpenCheck}
+            rotulo="Provas"
+            valor={turma.totalSimulados}
+          />
+          <ResumoDetalhe
+            icone={BarChart3}
+            rotulo="Finalizadas"
+            valor={turma.simuladosFinalizados}
+          />
+        </div>
+
+        <section className="px-4" aria-labelledby="acoes-turma">
+          <h3
+            id="acoes-turma"
+            className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+          >
+            Ações rápidas
+          </h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <Button asChild>
+              <Link href="/gestor/simulados/novo" className="gap-2">
+                <BookOpenCheck className="size-4" aria-hidden />
+                Criar prova
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/gestor/simulados" className="gap-2">
+                <ListChecks className="size-4" aria-hidden />
+                Simulados
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/gestor/alertas" className="gap-2">
+                <ShieldAlert className="size-4" aria-hidden />
+                Alertas
+              </Link>
+            </Button>
+          </div>
+        </section>
+
+        <section className="px-4 pb-6" aria-labelledby="alunos-turma">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h3
+                id="alunos-turma"
+                className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+              >
+                Alunos vinculados
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Primeiros registros carregados do banco.
+              </p>
+            </div>
+            {turma.simuladosLiberados > 0 && (
+              <span className="rounded-full bg-primary-muted px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary-text">
+                {turma.simuladosLiberados} liberado(s)
+              </span>
+            )}
+          </div>
+
+          {alunos.length === 0 ? (
+            <div className="mt-4 rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
+              Nenhum aluno encontrado para esta turma.
+            </div>
+          ) : (
+            <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
+              {alunos.map((aluno) => (
+                <li
+                  key={aluno.id}
+                  className="flex items-center justify-between gap-3 px-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {aluno.nome}
+                    </p>
+                    <p className="truncate font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {aluno.email}
+                    </p>
+                  </div>
+                  {aluno.necessitaSuporte && (
+                    <span className="shrink-0 rounded-full bg-warning-muted px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-warning">
+                      suporte
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {alunosOcultos > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Mais {alunosOcultos} aluno(s) nesta turma.
+            </p>
+          )}
+        </section>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ResumoDetalhe({
+  icone: Icone,
+  rotulo,
+  valor,
+}: {
+  icone: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  rotulo: string;
+  valor: number;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <Icone className="size-4 text-primary-text" aria-hidden />
+      <p className="mt-3 font-serif text-2xl leading-none tabular-nums">
+        {valor}
+      </p>
+      <p className="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+        {rotulo}
+      </p>
+    </div>
   );
 }
 
