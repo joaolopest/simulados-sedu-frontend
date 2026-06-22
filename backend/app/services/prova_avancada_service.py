@@ -362,11 +362,6 @@ def reabrir_para_aluno(
         ultima.reaberto_por_id = usuario.id
         ultima.motivo_reabertura = motivo
 
-    sessao.query(Resposta).filter(
-        Resposta.simulado_id == simulado.id,
-        Resposta.aluno_id == aluno.id,
-    ).delete(synchronize_session=False)
-
     inscricao = sessao.scalar(
         select(SimuladoInscricao).where(
             SimuladoInscricao.simulado_id == simulado.id,

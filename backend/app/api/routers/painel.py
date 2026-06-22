@@ -543,11 +543,20 @@ def _computar_resultado(
             return _serializar_resultado_persistido(persistido)
 
     ids_questoes = {sq.questao_id for sq in simulado.questoes}
-    respostas = sessao.scalars(
-        select(Resposta).where(
-            Resposta.aluno_id == aluno_id, Resposta.simulado_id == simulado.id
+    tentativa = tentativa_atual or prova_avancada_service.tentativa_mais_recente(
+        sessao, simulado_id=simulado.id, aluno_id=aluno_id,
+    )
+    consulta_respostas = select(Resposta).where(
+        Resposta.aluno_id == aluno_id,
+        Resposta.simulado_id == simulado.id,
+    )
+    if tentativa is not None:
+        consulta_respostas = consulta_respostas.where(
+            Resposta.tentativa_id == tentativa.id,
         )
-    ).all()
+    else:
+        consulta_respostas = consulta_respostas.where(Resposta.tentativa_id.is_(None))
+    respostas = sessao.scalars(consulta_respostas).all()
     # Conta só respostas de questões que AINDA estão na prova — evita contagem
     # inflada de erros se uma questão foi removida da prova após ser respondida.
     respostas = [r for r in respostas if r.questao_id in ids_questoes]
@@ -570,9 +579,6 @@ def _computar_resultado(
     primeira = min(_tempos) if _tempos else None
     ultima = max(_tempos) if _tempos else None
     inscricao = _inscricao_simulado_aluno(sessao, aluno_id, simulado.id)
-    tentativa = tentativa_atual or prova_avancada_service.tentativa_mais_recente(
-        sessao, simulado_id=simulado.id, aluno_id=aluno_id,
-    )
     finalizado_em = (
         (tentativa.finalizado_em if tentativa and tentativa.finalizado_em else None)
         or ultima
@@ -653,6 +659,7 @@ def _salvar_resposta_aluno(
             Resposta.aluno_id == aluno.id,
             Resposta.simulado_id == simulado.id,
             Resposta.questao_id == questao_id,
+            Resposta.tentativa_id == tentativa.id,
         )
     )
     agora = datetime.now(timezone.utc)

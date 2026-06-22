@@ -74,6 +74,7 @@ function buscarViaCurlWindows(url, init = {}) {
   const corpo = typeof init.body === "string" ? init.body : "";
   const args = [
     "--ssl-no-revoke",
+    "-4",
     "-sS",
     "-X",
     metodo,

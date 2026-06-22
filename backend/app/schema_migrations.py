@@ -319,6 +319,199 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         ON resultados_simulado (simulado_id)
         """,
         """
+        WITH grupos AS (
+            SELECT
+                r.simulado_id,
+                r.aluno_id,
+                MIN(r.respondida_em) AS iniciado_em,
+                MAX(r.respondida_em) AS finalizado_em,
+                COALESCE(SUM(r.tempo_gasto_segundos), 0)::integer AS tempo_total
+            FROM respostas r
+            WHERE r.tentativa_id IS NULL
+            GROUP BY r.simulado_id, r.aluno_id
+        ),
+        snapshots AS (
+            SELECT DISTINCT ON (simulado_id)
+                simulado_id,
+                id AS snapshot_id
+            FROM simulado_snapshots
+            ORDER BY simulado_id, versao DESC, id DESC
+        )
+        INSERT INTO simulado_tentativas (
+            simulado_id,
+            aluno_id,
+            snapshot_id,
+            numero,
+            status,
+            iniciado_em,
+            ultima_atividade_em,
+            finalizado_em,
+            tempo_total_segundos
+        )
+        SELECT
+            g.simulado_id,
+            g.aluno_id,
+            s.snapshot_id,
+            1,
+            'finalizada',
+            g.iniciado_em,
+            COALESCE(g.finalizado_em, g.iniciado_em, now()),
+            COALESCE(g.finalizado_em, g.iniciado_em, now()),
+            g.tempo_total
+        FROM grupos g
+        LEFT JOIN snapshots s ON s.simulado_id = g.simulado_id
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM simulado_tentativas t
+            WHERE t.simulado_id = g.simulado_id
+              AND t.aluno_id = g.aluno_id
+        )
+        ON CONFLICT DO NOTHING
+        """,
+        """
+        UPDATE respostas r
+        SET tentativa_id = t.id
+        FROM simulado_tentativas t
+        WHERE r.tentativa_id IS NULL
+          AND t.simulado_id = r.simulado_id
+          AND t.aluno_id = r.aluno_id
+          AND t.numero = 1
+        """,
+        """
+        INSERT INTO simulado_inscricoes (
+            simulado_id,
+            aluno_id,
+            status,
+            inscrito_em
+        )
+        SELECT
+            t.simulado_id,
+            t.aluno_id,
+            'finalizado',
+            COALESCE(t.iniciado_em, t.finalizado_em, now())
+        FROM simulado_tentativas t
+        WHERE t.status = 'finalizada'
+          AND EXISTS (
+            SELECT 1 FROM respostas r WHERE r.tentativa_id = t.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM simulado_inscricoes si
+            WHERE si.simulado_id = t.simulado_id
+              AND si.aluno_id = t.aluno_id
+          )
+        ON CONFLICT DO NOTHING
+        """,
+        """
+        WITH stats AS (
+            SELECT
+                t.id AS tentativa_id,
+                t.simulado_id,
+                t.aluno_id,
+                t.snapshot_id,
+                COALESCE(total.total_questoes, COUNT(DISTINCT r.questao_id), 0) AS total_questoes,
+                COUNT(*) FILTER (
+                    WHERE r.alternativa_id IS NOT NULL
+                      AND COALESCE(r.status, 'respondida') = 'respondida'
+                ) AS preenchidas,
+                COUNT(*) FILTER (WHERE COALESCE(a.correta, false) IS TRUE) AS acertos,
+                COUNT(*) FILTER (
+                    WHERE r.alternativa_id IS NOT NULL
+                      AND COALESCE(a.correta, false) IS FALSE
+                ) AS erros,
+                CASE
+                    WHEN COALESCE(SUM(r.tempo_gasto_segundos), 0) > 0
+                        THEN COALESCE(SUM(r.tempo_gasto_segundos), 0)::integer
+                    ELSE GREATEST(
+                        0,
+                        COALESCE(EXTRACT(EPOCH FROM (MAX(r.respondida_em) - MIN(r.respondida_em)))::integer, 0)
+                    )
+                END AS tempo_total_segundos
+            FROM simulado_tentativas t
+            JOIN respostas r ON r.tentativa_id = t.id
+            LEFT JOIN alternativas a ON a.id = r.alternativa_id
+            LEFT JOIN (
+                SELECT simulado_id, COUNT(*) AS total_questoes
+                FROM simulado_questoes
+                GROUP BY simulado_id
+            ) total ON total.simulado_id = t.simulado_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM resultados_simulado rs WHERE rs.tentativa_id = t.id
+            )
+            GROUP BY
+                t.id,
+                t.simulado_id,
+                t.aluno_id,
+                t.snapshot_id,
+                total.total_questoes
+        )
+        INSERT INTO resultados_simulado (
+            simulado_id,
+            aluno_id,
+            tentativa_id,
+            snapshot_id,
+            nota_final,
+            preenchidas,
+            acertos,
+            erros,
+            em_branco,
+            tempo_total_segundos,
+            resultado_json
+        )
+        SELECT
+            s.simulado_id,
+            s.aluno_id,
+            s.tentativa_id,
+            s.snapshot_id,
+            CASE
+                WHEN s.total_questoes > 0
+                    THEN ROUND((s.acertos::numeric / s.total_questoes::numeric) * 10, 1)::float
+                ELSE 0
+            END AS nota_final,
+            s.preenchidas,
+            s.acertos,
+            s.erros,
+            GREATEST(0, s.total_questoes - s.preenchidas) AS em_branco,
+            s.tempo_total_segundos,
+            json_build_object(
+                'id', 'res_' || s.aluno_id || '_' || s.simulado_id || '_' || s.tentativa_id,
+                'simuladoId', s.simulado_id::text,
+                'alunoId', s.aluno_id::text,
+                'tentativaId', s.tentativa_id::text,
+                'notaFinal', CASE
+                    WHEN s.total_questoes > 0
+                        THEN ROUND((s.acertos::numeric / s.total_questoes::numeric) * 10, 1)::float
+                    ELSE 0
+                END,
+                'totalQuestoes', s.total_questoes,
+                'preenchidas', s.preenchidas,
+                'acertos', s.acertos,
+                'erros', s.erros,
+                'emBranco', GREATEST(0, s.total_questoes - s.preenchidas),
+                'tempoTotalSegundos', s.tempo_total_segundos,
+                'respostas', COALESCE((
+                    SELECT json_agg(
+                        json_build_object(
+                            'questaoId', r.questao_id::text,
+                            'alternativaId', CASE
+                                WHEN r.alternativa_id IS NULL THEN NULL
+                                ELSE r.alternativa_id::text
+                            END,
+                            'status', COALESCE(r.status, 'respondida'),
+                            'tempoGastoSegundos', COALESCE(r.tempo_gasto_segundos, 0),
+                            'trocasDeResposta', COALESCE(r.trocas_de_resposta, 0),
+                            'respondidaEm', r.respondida_em
+                        )
+                        ORDER BY r.questao_id
+                    )
+                    FROM respostas r
+                    WHERE r.tentativa_id = s.tentativa_id
+                ), '[]'::json)
+            )
+        FROM stats s
+        ON CONFLICT (tentativa_id) DO NOTHING
+        """,
+        """
         CREATE TABLE IF NOT EXISTS prova_templates (
             id SERIAL PRIMARY KEY,
             nome VARCHAR(160) NOT NULL,
