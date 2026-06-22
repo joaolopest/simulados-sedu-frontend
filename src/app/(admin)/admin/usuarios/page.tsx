@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
@@ -646,7 +646,7 @@ function FormularioNovoUsuario({
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     reset,
     formState: { errors, isValid },
   } = useForm<FormUsuario>({
@@ -660,8 +660,8 @@ function FormularioNovoUsuario({
     },
   });
 
-  const perfilAtual = watch("perfil");
-  const escolaAtual = watch("escolaId");
+  const perfilAtual = useWatch({ control, name: "perfil" });
+  const escolaAtual = useWatch({ control, name: "escolaId" });
 
   function aoSubmeter(dados: FormUsuario) {
     criar.mutate(dados, {
@@ -798,7 +798,7 @@ function FormularioEditarUsuario({
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors, isValid, isDirty },
   } = useForm<FormUsuario>({
     resolver: zodResolver(esquemaUsuario),
@@ -811,8 +811,8 @@ function FormularioEditarUsuario({
     },
   });
 
-  const perfilAtual = watch("perfil");
-  const escolaAtual = watch("escolaId");
+  const perfilAtual = useWatch({ control, name: "perfil" });
+  const escolaAtual = useWatch({ control, name: "escolaId" });
 
   function aoSubmeter(dados: FormUsuario) {
     atualizar.mutate(

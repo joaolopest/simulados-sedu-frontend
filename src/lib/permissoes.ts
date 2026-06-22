@@ -19,6 +19,7 @@ export type Permissao =
   | "provas.liberar"
   | "escolas.gerenciar"
   | "usuarios.gerenciar"
+  | "configuracoes.gerenciar"
   | "auditoria.ver"
   | "turmas.ver"
   | "alertas.ver"
@@ -93,6 +94,7 @@ export const PERMISSOES_POR_PERFIL = {
     "provas.liberar",
     "escolas.gerenciar",
     "usuarios.gerenciar",
+    "configuracoes.gerenciar",
     "auditoria.ver",
     "turmas.ver",
     "alertas.ver",
@@ -187,6 +189,12 @@ export const NAVEGACAO_POR_PERFIL = {
       href: "/admin/usuarios",
       rotulo: "Usuários",
       permissao: "usuarios.gerenciar",
+    },
+    {
+      id: "configuracoes",
+      href: "/admin/configuracoes",
+      rotulo: "Configuracoes",
+      permissao: "configuracoes.gerenciar",
     },
     {
       id: "auditoria",

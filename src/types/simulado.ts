@@ -69,3 +69,19 @@ export interface SimuladoEmAndamento {
   status: StatusAlunoSimulado;
   conexaoOk: boolean;
 }
+
+export interface RecursosAcessibilidadeSimulado {
+  fonteMaior: boolean;
+  altoContraste: boolean;
+  leituraSimplificada: boolean;
+}
+
+export interface AcessibilidadeSimuladoAluno {
+  temAdaptacao: boolean;
+  adaptacoes: AdaptacaoCognitiva[];
+  tempoBaseSegundos: number;
+  tempoExtraPercentual: number;
+  tempoExtraAplicado: number;
+  tempoTotalSegundos: number;
+  recursos: RecursosAcessibilidadeSimulado;
+}

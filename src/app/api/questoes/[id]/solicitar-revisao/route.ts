@@ -14,9 +14,13 @@ export async function POST(
   const token = tokenDaRequisicao(request);
   const { id } = await contexto.params;
 
-  let body: { tipo?: string; motivo?: string };
+  let body: { tipo?: string; motivo?: string; proposta?: Record<string, unknown> };
   try {
-    body = (await request.json()) as { tipo?: string; motivo?: string };
+    body = (await request.json()) as {
+      tipo?: string;
+      motivo?: string;
+      proposta?: Record<string, unknown>;
+    };
   } catch {
     body = {};
   }
@@ -29,7 +33,11 @@ export async function POST(
     }>(`/questoes/${id}/solicitar-revisao`, {
       method: "POST",
       token,
-      body: { tipo: body.tipo ?? "edicao", motivo: body.motivo ?? null },
+      body: {
+        tipo: body.tipo ?? "edicao",
+        motivo: body.motivo ?? null,
+        proposta: body.proposta ?? null,
+      },
     });
     return NextResponse.json(resp, { status: 201 });
   } catch (erro) {

@@ -285,6 +285,72 @@ export interface TurmaEnriquecida extends Turma {
   }[];
 }
 
+export interface AlunoTurmaDetalhe {
+  id: string;
+  usuarioId: string;
+  nome: string;
+  email: string;
+  fotoUrl?: string | null;
+  necessitaSuporte: boolean;
+  adaptacoes: AdaptacaoCognitiva[];
+  media: number | null;
+  probabilidadeRisco: number;
+  totalResultados: number;
+  ultimoResultado?: {
+    simuladoId: string;
+    notaFinal: number;
+    acertos: number;
+    erros: number;
+    emBranco: number;
+    finalizadoEm?: string | null;
+  } | null;
+  competenciasFracas: string[];
+}
+
+export interface SimuladoTurmaDetalhe extends Simulado {
+  media: number | null;
+  totalQuestoes: number;
+  totalAlunos: number;
+  contagens: {
+    nao_iniciou: number;
+    em_andamento: number;
+    finalizado: number;
+    desconectou: number;
+    total: number;
+  };
+}
+
+export interface DetalheTurmaGestor {
+  turma: TurmaEnriquecida;
+  kpis: {
+    totalAlunos: number;
+    totalComAdaptacao: number;
+    totalSimulados: number;
+    simuladosFinalizados: number;
+    mediaTurma: number | null;
+    alunosEmRisco: number;
+  };
+  alunos: AlunoTurmaDetalhe[];
+  simulados: SimuladoTurmaDetalhe[];
+  resultadosRecentes: {
+    alunoId: string;
+    alunoNome: string;
+    simuladoId: string;
+    notaFinal: number;
+    acertos: number;
+    erros: number;
+    emBranco: number;
+    finalizadoEm?: string | null;
+  }[];
+  alertas: {
+    tipo: string;
+    severidade: "baixa" | "media" | "alta";
+    titulo: string;
+    mensagem: string;
+    quantidade: number;
+  }[];
+}
+
 export function useGestorTurmas() {
   return useQuery({
     queryKey: ["gestor", "turmas"],
@@ -293,6 +359,17 @@ export function useGestorTurmas() {
       return r.dados;
     },
     staleTime: 60_000,
+  });
+}
+
+export function useGestorTurmaDetalhe(id: string | undefined) {
+  return useQuery({
+    queryKey: ["gestor", "turma", id],
+    queryFn: () => obter<DetalheTurmaGestor>(`/gestor/turmas/${id}`),
+    enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 }
 

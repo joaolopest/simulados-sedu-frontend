@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import {
@@ -170,6 +170,12 @@ function ItemHistorico({ resultado }: { resultado: ResultadoEnriquecido }) {
         <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           <span>{obterNomeMateria(resultado.simuladoMateria)}</span>
           <span aria-hidden>·</span>
+          {resultado.tentativaNumero ? (
+            <>
+              <span>Tentativa {resultado.tentativaNumero}</span>
+              <span aria-hidden>·</span>
+            </>
+          ) : null}
           <span>{formatarDataBR(resultado.finalizadoEm)}</span>
           <span aria-hidden>·</span>
           <span>{formatarMinutosSegundos(resultado.tempoTotalSegundos)}</span>

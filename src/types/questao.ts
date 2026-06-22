@@ -34,7 +34,7 @@ export type Materia =
 
 export type NivelDificuldade = "facil" | "medio" | "dificil";
 
-export type StatusQuestao = "rascunho" | "publicada" | "arquivada";
+export type StatusQuestao = "rascunho" | "em_revisao" | "publicada" | "arquivada";
 
 export interface Alternativa {
   id: string;

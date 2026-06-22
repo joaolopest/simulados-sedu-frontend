@@ -52,12 +52,17 @@ export async function GET(request: Request): Promise<NextResponse> {
       token,
       query: {
         busca: url.searchParams.get("busca") ?? undefined,
-        // filtros vÃªm em code; o Python filtra por nome de exibiÃ§Ã£o
+        // filtros vêm em code; o Python filtra por nome de exibição
         serie: url.searchParams.getAll("serie").map(serieParaNome),
         materia: url.searchParams.getAll("materia").map(materiaParaNome),
+        conteudo: url.searchParams.getAll("conteudo"),
         nivel: url.searchParams.getAll("nivel").map(nivelParaNome),
         status: url.searchParams.getAll("status"),
         adaptacao: url.searchParams.getAll("adaptacao"),
+        competencia: url.searchParams.getAll("competencia"),
+        escola_id: url.searchParams.getAll("escolaId"),
+        criado_por_id: url.searchParams.getAll("criadoPor"),
+        com_imagem: url.searchParams.get("comImagem") ?? undefined,
         pagina,
         por_pagina: porPagina,
       },
@@ -86,7 +91,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     body = (await request.json()) as CorpoQuestao;
   } catch {
     return NextResponse.json(
-      { codigo: "CORPO_INVALIDO", mensagem: "Corpo da requisiÃ§Ã£o invÃ¡lido." },
+      { codigo: "CORPO_INVALIDO", mensagem: "Corpo da requisição inválido." },
       { status: 400 },
     );
   }

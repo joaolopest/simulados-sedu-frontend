@@ -57,7 +57,7 @@ export async function PATCH(
     patch = (await request.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json(
-      { codigo: "CORPO_INVALIDO", mensagem: "Corpo invÃ¡lido." },
+      { codigo: "CORPO_INVALIDO", mensagem: "Corpo inválido." },
       { status: 400 },
     );
   }

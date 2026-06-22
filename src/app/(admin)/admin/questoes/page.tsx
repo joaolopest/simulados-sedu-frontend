@@ -66,6 +66,7 @@ import type {
 
 const STATUS_OPCOES: { valor: StatusQuestao; rotulo: string }[] = [
   { valor: "rascunho", rotulo: "Rascunho" },
+  { valor: "em_revisao", rotulo: "Em revisão" },
   { valor: "publicada", rotulo: "Publicada" },
   { valor: "arquivada", rotulo: "Arquivada" },
 ];
@@ -103,6 +104,7 @@ const TOM_NIVEL: Record<
 
 const TOM_STATUS: Record<StatusQuestao, string> = {
   rascunho: "bg-muted text-muted-foreground",
+  em_revisao: "bg-warning-muted text-warning",
   publicada: "bg-success-muted text-success",
   arquivada: "bg-destructive-muted text-destructive",
 };
@@ -112,7 +114,7 @@ function ConteudoAdminQuestoes() {
   const statusInicial = useMemo(() => {
     const valor = searchParams.get("status");
     if (!valor) return [];
-    const validos = ["rascunho", "publicada", "arquivada"] as const;
+    const validos = ["rascunho", "em_revisao", "publicada", "arquivada"] as const;
     const itens = valor.split(",").filter((v): v is StatusQuestao =>
       (validos as readonly string[]).includes(v),
     );
@@ -167,6 +169,7 @@ function ConteudoAdminQuestoes() {
         onSuccess: () => {
           const labels: Record<StatusQuestao, string> = {
             rascunho: "marcada como rascunho",
+            em_revisao: "marcada como em revisão",
             publicada: "publicada",
             arquivada: "arquivada",
           };

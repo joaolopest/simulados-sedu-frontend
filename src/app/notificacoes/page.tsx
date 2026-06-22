@@ -30,9 +30,15 @@ const COR_TIPO: Record<string, string> = {
   simulado_liberado: "bg-primary-muted text-primary-text",
   simulado_iniciado: "bg-ia-muted text-ia",
   simulado_finalizado: "bg-success-muted text-success",
+  prova_liberada: "bg-primary-muted text-primary-text",
+  inscricao_prova: "bg-primary-muted text-primary-text",
+  tentativa_reaberta: "bg-warning-muted text-warning",
+  resultado_disponivel: "bg-success-muted text-success",
   diagnostico_pronto: "bg-success-muted text-success",
   alerta_risco: "bg-destructive-muted text-destructive",
   questao_publicada: "bg-warning-muted text-warning",
+  revisao_questao: "bg-warning-muted text-warning",
+  apoio_presencial: "bg-ia-muted text-ia",
   importacao_concluida: "bg-success-muted text-success",
   convite_usuario: "bg-ia-muted text-ia",
   sistema: "bg-muted text-muted-foreground",
@@ -63,14 +69,11 @@ export default function PaginaNotificacoes() {
   });
 
   const marcarTodas = useMutation({
-    mutationFn: async () => {
-      const naoLidas = data?.dados.filter((n) => !n.lida) ?? [];
-      await Promise.all(
-        naoLidas.map((n) =>
-          atualizar<Notificacao>(`/notificacoes/${n.id}`, { lida: true }),
-        ),
-      );
-    },
+    mutationFn: () =>
+      atualizar<{ ok: boolean; totalAtualizadas: number; lida: boolean }>(
+        "/notificacoes",
+        { lida: true },
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notificacoes", usuarioId] });
     },

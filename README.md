@@ -51,6 +51,16 @@ npm run dev
 
 Deploy contínuo na Vercel a partir da branch `main`. URL de produção: _a definir_.
 
+## QA final
+
+Para rodar a verificacao final do plano:
+
+```powershell
+pnpm run qa:final
+```
+
+Comandos detalhados e modos local/producao estao em `docs/qa-final.md`.
+
 ---
 
 [LinkedIn](https://linkedin.com/in/joaolopest) · joaolopest@gmail.com

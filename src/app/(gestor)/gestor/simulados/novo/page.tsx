@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -682,7 +682,10 @@ function Passo1Parametros({
   });
 
   // Auto-preenche série quando turma é escolhida (ainda permite override)
-  const turmaIdSelecionada = form.watch("turmaId");
+  const turmaIdSelecionada = useWatch({
+    control: form.control,
+    name: "turmaId",
+  });
   useEffect(() => {
     if (!turmaIdSelecionada) return;
     const turma = turmas.find((t) => t.id === turmaIdSelecionada);
@@ -936,10 +939,18 @@ function Passo2Conteudo({ valorInicial, aoSubmeter }: Passo2Props) {
     mode: "onBlur",
   });
 
-  const conteudos = form.watch("conteudos");
-  const quantidade = form.watch("quantidadeQuestoes");
-  const distribuicao = form.watch("distribuicao");
-  const adaptacoes = form.watch("adaptacoesAceitas");
+  const conteudos =
+    useWatch({ control: form.control, name: "conteudos" }) ?? [];
+  const quantidade =
+    useWatch({ control: form.control, name: "quantidadeQuestoes" }) ?? 20;
+  const distribuicao =
+    useWatch({ control: form.control, name: "distribuicao" }) ?? {
+      facil: 30,
+      medio: 50,
+      dificil: 20,
+    };
+  const adaptacoes =
+    useWatch({ control: form.control, name: "adaptacoesAceitas" }) ?? [];
 
   const [novoConteudo, setNovoConteudo] = useState("");
 

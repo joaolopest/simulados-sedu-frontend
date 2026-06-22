@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useLandingPublica } from "@/hooks/api/use-publico";
 
 interface EstiloDepoimento {
@@ -127,10 +128,12 @@ function CardTestimonial({
           aria-hidden
           className={`absolute -top-12 -right-12 size-56 rounded-full ${estilo.blobAcento} opacity-50`}
         />
-        <img
+        <Image
           src={estilo.src}
           alt={depoimento.papel}
-          className="relative z-10 size-full object-cover [filter:grayscale(100%)_contrast(1.15)] mix-blend-multiply transition-transform duration-500 group-hover:scale-105"
+          fill
+          sizes="(min-width: 768px) 33vw, 100vw"
+          className="relative z-10 object-cover [filter:grayscale(100%)_contrast(1.15)] mix-blend-multiply transition-transform duration-500 group-hover:scale-105"
           loading={indice === 0 ? "eager" : "lazy"}
         />
         <span

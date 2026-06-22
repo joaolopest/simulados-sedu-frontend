@@ -60,6 +60,50 @@ export function useAdminDashboard() {
 }
 
 // ============================================================
+// Configuracoes
+// ============================================================
+
+export type ChaveConfiguracaoSistema = "provas" | "acessibilidade" | "resultados";
+
+export interface ConfiguracaoSistema {
+  id: string;
+  chave: ChaveConfiguracaoSistema;
+  valor: Record<string, unknown>;
+  descricao?: string | null;
+  atualizadoPorId?: string | null;
+  criadoEm?: string | null;
+  atualizadoEm?: string | null;
+}
+
+export function useAdminConfiguracoes() {
+  return useQuery({
+    queryKey: ["admin", "configuracoes"],
+    queryFn: async () => {
+      const r = await obter<{ dados: ConfiguracaoSistema[] }>("/configuracoes");
+      return r.dados;
+    },
+    staleTime: 10_000,
+  });
+}
+
+export function useAtualizarConfiguracao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      chave: ChaveConfiguracaoSistema;
+      valor: Record<string, unknown>;
+    }) =>
+      atualizar<ConfiguracaoSistema>(`/configuracoes/${vars.chave}`, {
+        valor: vars.valor,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "configuracoes"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
+  });
+}
+
+// ============================================================
 // Questões
 // ============================================================
 
@@ -67,9 +111,14 @@ export interface FiltrosQuestao {
   busca?: string;
   serie?: SerieEscolar[];
   materia?: Materia[];
+  conteudo?: string[];
   nivel?: NivelDificuldade[];
   status?: StatusQuestao[];
   adaptacao?: AdaptacaoCognitiva[];
+  competencia?: string[];
+  escolaId?: string[];
+  criadoPor?: string[];
+  comImagem?: boolean;
   pagina?: number;
   porPagina?: number;
 }
@@ -89,9 +138,16 @@ export function useAdminQuestoes(filtros?: FiltrosQuestao) {
   if (filtros?.busca) params.set("busca", filtros.busca);
   filtros?.serie?.forEach((s) => params.append("serie", s));
   filtros?.materia?.forEach((m) => params.append("materia", m));
+  filtros?.conteudo?.forEach((c) => params.append("conteudo", c));
   filtros?.nivel?.forEach((n) => params.append("nivel", n));
   filtros?.status?.forEach((s) => params.append("status", s));
   filtros?.adaptacao?.forEach((a) => params.append("adaptacao", a));
+  filtros?.competencia?.forEach((c) => params.append("competencia", c));
+  filtros?.escolaId?.forEach((id) => params.append("escolaId", id));
+  filtros?.criadoPor?.forEach((id) => params.append("criadoPor", id));
+  if (typeof filtros?.comImagem === "boolean") {
+    params.set("comImagem", String(filtros.comImagem));
+  }
   if (filtros?.pagina) params.set("pagina", String(filtros.pagina));
   if (filtros?.porPagina) params.set("porPagina", String(filtros.porPagina));
   const qs = params.toString();

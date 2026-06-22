@@ -2,10 +2,16 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { obter } from "@/lib/api";
-import type { Questao, RespostaQuestao, Simulado } from "@/types";
+import type {
+  AcessibilidadeSimuladoAluno,
+  Questao,
+  RespostaQuestao,
+  Simulado,
+} from "@/types";
 
 export interface RespostaSimuladoAluno {
   simulado: Simulado;
+  acessibilidade?: AcessibilidadeSimuladoAluno;
   questoes: Questao[];
   respostas: RespostaQuestao[];
 }

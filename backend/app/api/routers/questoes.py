@@ -2,7 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,6 +24,7 @@ from app.models import (
     Nivel,
     Notificacao,
     Questao,
+    QuestaoVersao,
     RevisaoQuestao,
     Serie,
     Usuario,
@@ -39,11 +41,11 @@ class AlternativaIn(BaseModel):
 
 
 class CadastrarQuestaoRequest(BaseModel):
-    enunciado: str = Field(..., examples=["Qual Ã© a raiz de 2x - 8 = 0?"])
-    serie: str = Field(..., examples=["9Âº ano"])
-    materia: str = Field(..., examples=["MatemÃ¡tica"])
-    conteudo: str = Field(..., examples=["FunÃ§Ãµes"])
-    nivel: str = Field(..., examples=["FÃ¡cil"])
+    enunciado: str = Field(..., examples=["Qual é a raiz de 2x - 8 = 0?"])
+    serie: str = Field(..., examples=["9º ano"])
+    materia: str = Field(..., examples=["Matemática"])
+    conteudo: str = Field(..., examples=["Funções"])
+    nivel: str = Field(..., examples=["Fácil"])
     adaptacoes: list[str] = []
     competencias: list[str] = []
     explicacao: str | None = None
@@ -72,7 +74,7 @@ def _status_enum(valor: str) -> StatusQuestao:
     try:
         return StatusQuestao(valor)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"status invÃ¡lido: {valor}") from exc
+        raise HTTPException(status_code=422, detail=f"status inválido: {valor}") from exc
 
 
 def _serializar(questao: Questao) -> dict:
@@ -108,14 +110,123 @@ def _serializar(questao: Questao) -> dict:
     }
 
 
-@router.get("", summary="Listar e filtrar questÃµes")
+def _snapshot_questao(questao: Questao) -> dict:
+    return _serializar(questao)
+
+
+def _registrar_versao_questao(
+    sessao: Session,
+    questao: Questao,
+    *,
+    usuario: Usuario | None,
+    motivo: str,
+) -> None:
+    versao = int(questao.versao or 1)
+    existente = sessao.scalar(
+        select(QuestaoVersao).where(
+            QuestaoVersao.questao_id == questao.id,
+            QuestaoVersao.versao == versao,
+        )
+    )
+    snapshot = _snapshot_questao(questao)
+    if existente is not None:
+        existente.snapshot_json = snapshot
+        existente.criado_por_id = usuario.id if usuario else existente.criado_por_id
+        existente.motivo = motivo
+        return
+    sessao.add(
+        QuestaoVersao(
+            questao_id=questao.id,
+            versao=versao,
+            snapshot_json=snapshot,
+            criado_por_id=usuario.id if usuario else None,
+            motivo=motivo,
+        )
+    )
+
+
+def _serializar_versao(versao: QuestaoVersao) -> dict:
+    return {
+        "id": versao.id,
+        "questao_id": versao.questao_id,
+        "versao": versao.versao,
+        "snapshot": versao.snapshot_json or {},
+        "criado_por_id": versao.criado_por_id,
+        "motivo": versao.motivo,
+        "criado_em": versao.criado_em.isoformat() if versao.criado_em else None,
+    }
+
+
+def _aplicar_campos_questao(
+    sessao: Session,
+    questao: Questao,
+    dados: dict,
+    *,
+    usuario: Usuario,
+    permitir_publicar: bool,
+) -> None:
+    if dados.get("enunciado") is not None:
+        questao.enunciado = dados["enunciado"]
+    if dados.get("serie") is not None:
+        serie = sessao.scalar(select(Serie).where(Serie.nome == dados["serie"]))
+        if serie is None:
+            raise HTTPException(status_code=422, detail=f"série inexistente: {dados['serie']}")
+        questao.serie = serie
+    materia_id_para_conteudo = questao.materia_id
+    if dados.get("materia") is not None:
+        materia = sessao.scalar(select(Materia).where(Materia.nome == dados["materia"]))
+        if materia is None:
+            raise HTTPException(status_code=422, detail=f"matéria inexistente: {dados['materia']}")
+        questao.materia = materia
+        materia_id_para_conteudo = materia.id
+    if dados.get("nivel") is not None:
+        nivel = sessao.scalar(select(Nivel).where(Nivel.nome == dados["nivel"]))
+        if nivel is None:
+            raise HTTPException(status_code=422, detail=f"nível inexistente: {dados['nivel']}")
+        questao.nivel = nivel
+    if dados.get("conteudo") is not None:
+        cont = sessao.scalar(
+            select(Conteudo).where(
+                Conteudo.nome == dados["conteudo"],
+                Conteudo.materia_id == materia_id_para_conteudo,
+            )
+        )
+        if cont is None:
+            cont = Conteudo(nome=dados["conteudo"], materia_id=materia_id_para_conteudo)
+            sessao.add(cont)
+            sessao.flush()
+        questao.conteudo = cont
+    if "adaptacoes" in dados and dados["adaptacoes"] is not None:
+        questao.adaptacoes = dados["adaptacoes"]
+    if "competencias" in dados and dados["competencias"] is not None:
+        questao.competencias = dados["competencias"]
+    if "explicacao" in dados and dados["explicacao"] is not None:
+        questao.explicacao = dados["explicacao"]
+    if dados.get("tempo_estimado_segundos") is not None:
+        questao.tempo_estimado_segundos = dados["tempo_estimado_segundos"]
+    if dados.get("status") is not None:
+        if dados["status"] == "publicada" and not permitir_publicar:
+            raise HTTPException(
+                status_code=403, detail="Apenas admin/gestor publicam questões."
+            )
+        questao.status = _status_enum(dados["status"])
+    if "imagem_url" in dados and dados["imagem_url"] is not None:
+        questao.imagem_url = dados["imagem_url"]
+
+
+@router.get("", summary="Listar e filtrar questões")
 def listar_questoes(
     busca: str | None = Query(None),
-    serie: list[str] | None = Query(None, description="Nomes de sÃ©rie (ex.: '9Âº ano')"),
+    serie: list[str] | None = Query(None, description="Nomes de série (ex.: '9º ano')"),
     materia: list[str] | None = Query(None),
+    conteudo: list[str] | None = Query(None),
     nivel: list[str] | None = Query(None),
     status: list[str] | None = Query(None),
     adaptacao: list[str] | None = Query(None),
+    competencia: list[str] | None = Query(None),
+    escola_id: list[int] | None = Query(None),
+    criado_por_id: list[int] | None = Query(None),
+    com_imagem: bool | None = Query(None),
     pagina: int = Query(1, ge=1),
     por_pagina: int = Query(20, ge=1, le=200),
     usuario: Usuario = Depends(leitores_questao),
@@ -125,6 +236,7 @@ def listar_questoes(
         sessao.query(Questao)
         .join(Serie, Questao.serie_id == Serie.id)
         .join(Materia, Questao.materia_id == Materia.id)
+        .join(Conteudo, Questao.conteudo_id == Conteudo.id)
         .join(Nivel, Questao.nivel_id == Nivel.id)
     )
     q = aplicar_escopo_questoes(q, usuario)
@@ -134,33 +246,74 @@ def listar_questoes(
         q = q.filter(Serie.nome.in_(serie))
     if materia:
         q = q.filter(Materia.nome.in_(materia))
+    if conteudo:
+        q = q.filter(Conteudo.nome.in_(conteudo))
     if nivel:
         q = q.filter(Nivel.nome.in_(nivel))
     if status:
         q = q.filter(Questao.status.in_([_status_enum(s) for s in status]))
+    if escola_id:
+        q = q.filter(Questao.escola_id.in_(escola_id))
+    if criado_por_id:
+        q = q.filter(Questao.criado_por_id.in_(criado_por_id))
+    if com_imagem is True:
+        q = q.filter(Questao.imagem_url.is_not(None), Questao.imagem_url != "")
+    elif com_imagem is False:
+        q = q.filter(or_(Questao.imagem_url.is_(None), Questao.imagem_url == ""))
 
+    usar_fallback_json = False
     if adaptacao:
-        # Filtro por adaptação vive em JSON — filtra em memória (caminho menos comum).
-        itens = q.order_by(Questao.id).all()
-        itens = [
-            it for it in itens if any(a in (it.adaptacoes or []) for a in adaptacao)
-        ]
+        if sessao.get_bind().dialect.name == "postgresql":
+            q = q.filter(
+                or_(
+                    *[
+                        Questao.adaptacoes.cast(JSONB).contains([item])
+                        for item in adaptacao
+                    ]
+                )
+            )
+        else:
+            usar_fallback_json = True
+    if competencia:
+        if sessao.get_bind().dialect.name == "postgresql":
+            q = q.filter(
+                or_(
+                    *[
+                        Questao.competencias.cast(JSONB).contains([item])
+                        for item in competencia
+                    ]
+                )
+            )
+        else:
+            usar_fallback_json = True
+
+    q_pagina = q.options(
+        selectinload(Questao.serie),
+        selectinload(Questao.materia),
+        selectinload(Questao.conteudo),
+        selectinload(Questao.nivel),
+        selectinload(Questao.alternativas),
+    )
+
+    if usar_fallback_json:
+        itens = q_pagina.order_by(Questao.id).all()
+        if adaptacao:
+            itens = [
+                it for it in itens if any(a in (it.adaptacoes or []) for a in adaptacao)
+            ]
+        if competencia:
+            itens = [
+                it
+                for it in itens
+                if any(c in (it.competencias or []) for c in competencia)
+            ]
         total = len(itens)
         inicio = (pagina - 1) * por_pagina
         pagina_itens = itens[inicio : inicio + por_pagina]
     else:
-        # Caminho rápido: conta + pagina no banco (offset/limit) e carrega só a
-        # página com eager-load das relações (sem N+1, sem trazer tudo).
         total = q.count()
         pagina_itens = (
-            q.options(
-                selectinload(Questao.serie),
-                selectinload(Questao.materia),
-                selectinload(Questao.conteudo),
-                selectinload(Questao.nivel),
-                selectinload(Questao.alternativas),
-            )
-            .order_by(Questao.id)
+            q_pagina.order_by(Questao.id)
             .offset((pagina - 1) * por_pagina)
             .limit(por_pagina)
             .all()
@@ -182,6 +335,7 @@ def _serializar_revisao(revisao: RevisaoQuestao) -> dict:
         "escola_id": revisao.escola_id,
         "tipo": revisao.tipo,
         "motivo": revisao.motivo,
+        "proposta": revisao.proposta_json,
         "status": revisao.status,
         "resposta": revisao.resposta,
         "resolvido_por_id": revisao.resolvido_por_id,
@@ -220,7 +374,7 @@ def resolver_revisao(
 ) -> dict:
     revisao = sessao.get(RevisaoQuestao, revisao_id)
     if revisao is None:
-        raise HTTPException(status_code=404, detail="RevisÃ£o nÃ£o encontrada.")
+        raise HTTPException(status_code=404, detail="Revisão não encontrada.")
     if req.status not in ("aprovada", "rejeitada"):
         raise HTTPException(status_code=422, detail="Status deve ser aprovada ou rejeitada.")
 
@@ -229,20 +383,49 @@ def resolver_revisao(
     revisao.resolvido_por_id = usuario.id
     revisao.resolvido_em = datetime.now(timezone.utc)
 
-    if req.status == "aprovada" and revisao.tipo == "exclusao" and revisao.questao:
-        revisao.questao.status = StatusQuestao.ARQUIVADA
-        revisao.questao.atualizada_em = datetime.now(timezone.utc)
+    proposta = dict(revisao.proposta_json or {})
+    status_anterior = proposta.pop("_status_anterior", None)
+    if revisao.questao:
+        if req.status == "aprovada" and revisao.tipo == "exclusao":
+            revisao.questao.status = StatusQuestao.ARQUIVADA
+            revisao.questao.atualizada_em = datetime.now(timezone.utc)
+        elif req.status == "aprovada" and revisao.tipo == "edicao":
+            if proposta:
+                _aplicar_campos_questao(
+                    sessao,
+                    revisao.questao,
+                    proposta,
+                    usuario=usuario,
+                    permitir_publicar=True,
+                )
+                if "status" not in proposta and revisao.questao.status == StatusQuestao.EM_REVISAO:
+                    revisao.questao.status = _status_enum(status_anterior or "rascunho")
+                revisao.questao.versao = (revisao.questao.versao or 1) + 1
+                revisao.questao.atualizada_em = datetime.now(timezone.utc)
+                sessao.flush()
+                _registrar_versao_questao(
+                    sessao,
+                    revisao.questao,
+                    usuario=usuario,
+                    motivo=f"revisao aprovada #{revisao.id}",
+                )
+            elif revisao.questao.status == StatusQuestao.EM_REVISAO:
+                revisao.questao.status = _status_enum(status_anterior or "rascunho")
+                revisao.questao.atualizada_em = datetime.now(timezone.utc)
+        elif req.status == "rejeitada" and revisao.questao.status == StatusQuestao.EM_REVISAO:
+            revisao.questao.status = _status_enum(status_anterior or "rascunho")
+            revisao.questao.atualizada_em = datetime.now(timezone.utc)
 
     sessao.add(
         Notificacao(
             tipo="revisao_questao",
-            titulo=f"RevisÃ£o {req.status}",
-            mensagem=req.resposta or f"Sua solicitaÃ§Ã£o foi {req.status}.",
+            titulo=f"Revisão {req.status}",
+            mensagem=req.resposta or f"Sua solicitação foi {req.status}.",
             destinatario_id=revisao.solicitante_id,
             origem_id=str(revisao.questao_id),
             origem_tipo="questao",
             acao_url=f"/professor/questoes",
-            acao_label="Ver questÃµes",
+            acao_label="Ver questões",
         )
     )
     auditoria_service.registrar(
@@ -267,13 +450,37 @@ def detalhar_questao(
 ) -> dict:
     questao = sessao.get(Questao, questao_id)
     if questao is None:
-        raise HTTPException(status_code=404, detail="QuestÃ£o nÃ£o encontrada.")
+        raise HTTPException(status_code=404, detail="Questão não encontrada.")
     if not usuario_pode_ver_questao(sessao, usuario, questao):
-        raise HTTPException(status_code=403, detail="QuestÃ£o fora do seu escopo.")
+        raise HTTPException(status_code=403, detail="Questão fora do seu escopo.")
     return _serializar(questao)
 
 
-@router.post("", status_code=201, summary="Cadastrar questÃ£o")
+@router.get("/{questao_id}/versoes")
+def listar_versoes_questao(
+    questao_id: int,
+    usuario: Usuario = Depends(leitores_questao),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    questao = sessao.get(Questao, questao_id)
+    if questao is None:
+        raise HTTPException(status_code=404, detail="Questão não encontrada.")
+    if not usuario_pode_ver_questao(sessao, usuario, questao):
+        raise HTTPException(status_code=403, detail="Questão fora do seu escopo.")
+    versoes = sessao.scalars(
+        select(QuestaoVersao)
+        .where(QuestaoVersao.questao_id == questao_id)
+        .order_by(QuestaoVersao.versao.desc())
+    ).all()
+    return {
+        "questao_id": questao_id,
+        "versao_atual": questao.versao,
+        "dados": [_serializar_versao(v) for v in versoes],
+        "total": len(versoes),
+    }
+
+
+@router.post("", status_code=201, summary="Cadastrar questão")
 def cadastrar_questao(
     req: CadastrarQuestaoRequest,
     request: Request,
@@ -295,7 +502,7 @@ def cadastrar_questao(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Campos de fidelidade que o service nÃ£o cobre.
+    # Campos de fidelidade que o service não cobre.
     if usuario.perfil == PerfilUsuario.ADMIN:
         questao.status = _status_enum(req.status)
     elif usuario.perfil == PerfilUsuario.GESTOR:
@@ -307,6 +514,13 @@ def cadastrar_questao(
     questao.explicacao = req.explicacao
     questao.criado_por_id = usuario.id  # dono = quem criou (ignora criado_por_id do body)
     questao.escola_id = None if usuario.perfil == PerfilUsuario.ADMIN else usuario.escola_id
+    sessao.flush()
+    _registrar_versao_questao(
+        sessao,
+        questao,
+        usuario=usuario,
+        motivo="criacao",
+    )
     auditoria_service.registrar(
         sessao,
         usuario=usuario,
@@ -331,60 +545,26 @@ def atualizar_questao(
 ) -> dict:
     questao = sessao.get(Questao, questao_id)
     if questao is None:
-        raise HTTPException(status_code=404, detail="QuestÃ£o nÃ£o encontrada.")
+        raise HTTPException(status_code=404, detail="Questão não encontrada.")
 
-    if req.enunciado is not None:
-        questao.enunciado = req.enunciado
-    if req.serie is not None:
-        serie = sessao.scalar(select(Serie).where(Serie.nome == req.serie))
-        if serie is None:
-            raise HTTPException(status_code=422, detail=f"sÃ©rie inexistente: {req.serie}")
-        questao.serie = serie
-    if req.materia is not None:
-        materia = sessao.scalar(select(Materia).where(Materia.nome == req.materia))
-        if materia is None:
-            raise HTTPException(status_code=422, detail=f"matÃ©ria inexistente: {req.materia}")
-        questao.materia = materia
-    if req.nivel is not None:
-        nivel = sessao.scalar(select(Nivel).where(Nivel.nome == req.nivel))
-        if nivel is None:
-            raise HTTPException(status_code=422, detail=f"nÃ­vel inexistente: {req.nivel}")
-        questao.nivel = nivel
-    if req.conteudo is not None:
-        cont = sessao.scalar(
-            select(Conteudo).where(
-                Conteudo.nome == req.conteudo,
-                Conteudo.materia_id == questao.materia_id,
-            )
-        )
-        if cont is None:
-            cont = Conteudo(nome=req.conteudo, materia_id=questao.materia_id)
-            sessao.add(cont)
-            sessao.flush()
-        questao.conteudo = cont
-    if req.adaptacoes is not None:
-        questao.adaptacoes = req.adaptacoes
-    if req.competencias is not None:
-        questao.competencias = req.competencias
-    if req.explicacao is not None:
-        questao.explicacao = req.explicacao
-    if req.tempo_estimado_segundos is not None:
-        questao.tempo_estimado_segundos = req.tempo_estimado_segundos
-    if req.status is not None:
-        # professor nÃ£o publica â€” sÃ³ admin/gestor podem marcar 'publicada'.
-        if req.status == "publicada" and usuario.perfil not in (
-            PerfilUsuario.ADMIN,
-            PerfilUsuario.GESTOR,
-        ):
-            raise HTTPException(
-                status_code=403, detail="Apenas admin/gestor publicam questÃµes."
-            )
-        questao.status = _status_enum(req.status)
-    if req.imagem_url is not None:
-        questao.imagem_url = req.imagem_url
+    dados = req.model_dump(exclude_none=True)
+    _aplicar_campos_questao(
+        sessao,
+        questao,
+        dados,
+        usuario=usuario,
+        permitir_publicar=usuario.perfil in (PerfilUsuario.ADMIN, PerfilUsuario.GESTOR),
+    )
 
     questao.versao = (questao.versao or 1) + 1
     questao.atualizada_em = datetime.now(timezone.utc)
+    sessao.flush()
+    _registrar_versao_questao(
+        sessao,
+        questao,
+        usuario=usuario,
+        motivo="edicao direta",
+    )
     tipo_auditoria = "publicar_questao" if req.status == "publicada" else "editar_questao"
     detalhes = (
         f"Alterou status para {req.status}"
@@ -414,7 +594,7 @@ def remover_questao(
 ) -> dict:
     questao = sessao.get(Questao, questao_id)
     if questao is None:
-        raise HTTPException(status_code=404, detail="QuestÃ£o nÃ£o encontrada.")
+        raise HTTPException(status_code=404, detail="Questão não encontrada.")
 
     if usuario.perfil == PerfilUsuario.ADMIN:
         try:
@@ -454,14 +634,14 @@ def remover_questao(
         if escola_id != usuario.escola_id and questao.criado_por_id != usuario.id:
             raise HTTPException(
                 status_code=403,
-                detail="Gestor sÃ³ pode arquivar questÃµes da prÃ³pria escola.",
+                detail="Gestor só pode arquivar questões da própria escola.",
             )
     elif questao.criado_por_id != usuario.id:
         raise HTTPException(
             status_code=403,
             detail={
                 "codigo": "SOLICITE_REVISAO",
-                "mensagem": "Solicite revisÃ£o para arquivar questÃ£o de outro autor.",
+                "mensagem": "Solicite revisão para arquivar questão de outro autor.",
             },
         )
 
@@ -483,6 +663,7 @@ def remover_questao(
 class SolicitarRevisaoRequest(BaseModel):
     tipo: str = "edicao"  # "exclusao" | "edicao"
     motivo: str | None = None
+    proposta: AtualizarQuestaoRequest | None = None
 
 
 @router.post("/{questao_id}/solicitar-revisao", status_code=201)
@@ -493,15 +674,15 @@ def solicitar_revisao_questao(
     usuario: Usuario = Depends(criadores_questao),
     sessao: Session = Depends(get_session),
 ) -> dict:
-    """Professor/gestor pedem revisÃ£o (excluir ou editar questÃ£o alheia).
+    """Professor/gestor pedem revisão (excluir ou editar questão alheia).
 
-    NÃ£o altera a questÃ£o: apenas notifica os admins e registra auditoria.
+    Não altera a questão: apenas notifica os admins e registra auditoria.
     """
     questao = sessao.get(Questao, questao_id)
     if questao is None:
-        raise HTTPException(status_code=404, detail="QuestÃ£o nÃ£o encontrada.")
+        raise HTTPException(status_code=404, detail="Questão não encontrada.")
     if not usuario_pode_ver_questao(sessao, usuario, questao):
-        raise HTTPException(status_code=403, detail="QuestÃ£o fora do seu escopo.")
+        raise HTTPException(status_code=403, detail="Questão fora do seu escopo.")
     tipo = "exclusao" if req.tipo == "exclusao" else "edicao"
     escola_id = escola_id_da_questao(sessao, questao)
     existente = sessao.scalar(
@@ -515,19 +696,25 @@ def solicitar_revisao_questao(
     if existente is not None:
         return {"ok": True, "id": existente.id, "tipo": tipo, "status": existente.status, "notificados": 0}
 
+    proposta = req.proposta.model_dump(exclude_none=True) if req.proposta else {}
+    proposta["_status_anterior"] = questao.status.value
     revisao = RevisaoQuestao(
         questao_id=questao_id,
         solicitante_id=usuario.id,
         escola_id=escola_id,
         tipo=tipo,
         motivo=req.motivo,
+        proposta_json=proposta or None,
         status="pendente",
     )
     sessao.add(revisao)
     sessao.flush()
-    rotulo = "exclusÃ£o" if tipo == "exclusao" else "ediÃ§Ã£o"
+    if questao.status != StatusQuestao.ARQUIVADA:
+        questao.status = StatusQuestao.EM_REVISAO
+        questao.atualizada_em = datetime.now(timezone.utc)
+    rotulo = "exclusão" if tipo == "exclusao" else "edição"
     resumo = (questao.enunciado or "")[:60]
-    msg = f"{usuario.nome} solicitou {rotulo} da questÃ£o #{questao_id} ({resumo}â€¦)."
+    msg = f"{usuario.nome} solicitou {rotulo} da questão #{questao_id} ({resumo}…)."
     if req.motivo:
         msg += f" Motivo: {req.motivo}"
     destinatarios = sessao.scalars(
@@ -550,13 +737,13 @@ def solicitar_revisao_questao(
         sessao.add(
             Notificacao(
                 tipo="revisao_questao",
-                titulo=f"RevisÃ£o solicitada: {rotulo} de questÃ£o",
+                titulo=f"Revisão solicitada: {rotulo} de questão",
                 mensagem=msg,
                 destinatario_id=adm.id,
                 origem_id=str(questao_id),
                 origem_tipo="questao",
                 acao_url=f"/admin/questoes/{questao_id}",
-                acao_label="Ver questÃ£o",
+                acao_label="Ver questão",
             )
         )
     auditoria_service.registrar(

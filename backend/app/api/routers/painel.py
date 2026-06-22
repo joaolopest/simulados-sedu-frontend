@@ -6,9 +6,11 @@ lado do servidor. Valores sem origem no banco (deltas semana-a-semana, insights
 de IA) vêm zerados/vazios e estão sinalizados.
 """
 
+import csv
 from datetime import datetime, timedelta, timezone
+from io import StringIO
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,7 +27,13 @@ from app.api.permissoes import (
 )
 from app.api.routers.questoes import _serializar as _serializar_questao
 from app.enums import PerfilUsuario, StatusQuestao, StatusSimulado
-from app.services import auditoria_service, prova_avancada_service, questao_service, simulado_service
+from app.services import (
+    auditoria_service,
+    configuracao_service,
+    prova_avancada_service,
+    questao_service,
+    simulado_service,
+)
 from app.models import (
     Aluno,
     Alternativa,
@@ -246,6 +254,103 @@ def _normalizar_parametros_simulado(s: Simulado) -> dict:
     return normalizado
 
 
+def _config_provas(sessao: Session) -> dict:
+    return configuracao_service.config_provas(sessao)
+
+
+def _config_acessibilidade(sessao: Session) -> dict:
+    return configuracao_service.config_acessibilidade(sessao)
+
+
+def _normalizar_adaptacao_aluno(codigo: object) -> str | None:
+    texto = str(codigo or "").strip().lower()
+    if not texto:
+        return None
+    if texto == "baixa_visao":
+        return "deficiencia_visual"
+    return texto
+
+
+def _adaptacoes_aluno(aluno: Aluno) -> list[str]:
+    adaptacoes: list[str] = []
+    for item in aluno.perfil_cognitivo or []:
+        codigo = _normalizar_adaptacao_aluno(item)
+        if codigo and codigo not in adaptacoes:
+            adaptacoes.append(codigo)
+    return adaptacoes
+
+
+def _tempo_base_simulado_segundos(simulado: Simulado) -> int:
+    minutos = _inteiro_positivo(
+        _normalizar_parametros_simulado(simulado).get("tempoLimiteMinutos"), 60,
+    )
+    return max(1, minutos) * 60
+
+
+def _acessibilidade_aluno_simulado(
+    sessao: Session, aluno: Aluno, simulado: Simulado
+) -> dict:
+    config = _config_acessibilidade(sessao)
+    adaptacoes_config = config.get("adaptacoesDisponiveis") or []
+    disponiveis = {
+        codigo
+        for codigo in (_normalizar_adaptacao_aluno(item) for item in adaptacoes_config)
+        if codigo
+    }
+    adaptacoes = _adaptacoes_aluno(aluno)
+    adaptacoes_aplicaveis = [
+        codigo for codigo in adaptacoes if not disponiveis or codigo in disponiveis
+    ]
+    tem_adaptacao = bool(aluno.necessita_suporte or adaptacoes_aplicaveis or adaptacoes)
+    percentual = _inteiro_positivo(config.get("tempoExtraPercentualPadrao"), 25)
+    percentual = min(percentual, 200) if tem_adaptacao else 0
+    tempo_base = _tempo_base_simulado_segundos(simulado)
+    tempo_total = int(round(tempo_base * (1 + percentual / 100)))
+    tempo_extra = max(0, tempo_total - tempo_base)
+
+    return {
+        "temAdaptacao": tem_adaptacao,
+        "adaptacoes": adaptacoes_aplicaveis or adaptacoes,
+        "tempoBaseSegundos": tempo_base,
+        "tempoExtraPercentual": percentual,
+        "tempoExtraAplicado": tempo_extra,
+        "tempoTotalSegundos": tempo_total,
+        "recursos": {
+            "fonteMaior": bool(tem_adaptacao and config.get("permitirFonteMaior")),
+            "altoContraste": bool(tem_adaptacao and config.get("permitirAltoContraste")),
+            "leituraSimplificada": bool(
+                tem_adaptacao and config.get("permitirLeituraSimplificada")
+            ),
+        },
+    }
+
+
+def _limites_prova(sessao: Session) -> tuple[int, int]:
+    config = _config_provas(sessao)
+    minimo = _inteiro_positivo(config.get("quantidadeMinimaQuestoes"), 3)
+    maximo = _inteiro_positivo(config.get("quantidadeMaximaQuestoes"), 100)
+    return max(1, minimo), max(maximo, minimo)
+
+
+def _aplicar_defaults_parametros_prova(sessao: Session, parametros: dict) -> dict:
+    config = _config_provas(sessao)
+    saida = dict(parametros or {})
+    if not saida.get("tempoLimiteMinutos"):
+        saida["tempoLimiteMinutos"] = _inteiro_positivo(
+            config.get("tempoPadraoMinutos"), 60,
+        )
+    return saida
+
+
+def _validar_simulado_com_config(sessao: Session, simulado: Simulado) -> dict:
+    minimo, maximo = _limites_prova(sessao)
+    return prova_avancada_service.validar_simulado(
+        simulado,
+        quantidade_minima_questoes=minimo,
+        quantidade_maxima_questoes=maximo,
+    )
+
+
 def _serializar_simulado(s: Simulado) -> dict:
     """Reconstrói o shape Simulado do frontend a partir do registro do banco.
     parametros_json já guarda o ParametrosSimulado original (camelCase)."""
@@ -264,30 +369,178 @@ def _serializar_simulado(s: Simulado) -> dict:
     }
 
 
+def _serializar_resultado_persistido(persistido: ResultadoSimulado) -> dict:
+    dados = dict(persistido.resultado_json or {})
+    tentativa = persistido.tentativa
+    iniciado_em = tentativa.iniciado_em if tentativa else None
+    finalizado_em = tentativa.finalizado_em if tentativa else None
+
+    dados.setdefault(
+        "id",
+        f"res_{persistido.aluno_id}_{persistido.simulado_id}_{persistido.tentativa_id}",
+    )
+    dados.setdefault("simuladoId", str(persistido.simulado_id))
+    dados.setdefault("alunoId", str(persistido.aluno_id))
+    dados.setdefault("tentativaId", str(persistido.tentativa_id))
+    if tentativa is not None:
+        dados.setdefault("tentativaNumero", tentativa.numero)
+        dados.setdefault("statusTentativa", tentativa.status)
+        dados.setdefault("motivoReabertura", tentativa.motivo_reabertura)
+    dados.setdefault("respostas", [])
+    dados.setdefault("notaFinal", persistido.nota_final)
+    dados.setdefault("preenchidas", persistido.preenchidas)
+    dados.setdefault("acertos", persistido.acertos)
+    dados.setdefault("erros", persistido.erros)
+    dados.setdefault("emBranco", persistido.em_branco)
+    dados.setdefault("tempoTotalSegundos", persistido.tempo_total_segundos)
+    if not dados.get("iniciadoEm"):
+        dados["iniciadoEm"] = (
+            iniciado_em.isoformat()
+            if iniciado_em
+            else persistido.criado_em.isoformat()
+        )
+    if not dados.get("finalizadoEm"):
+        dados["finalizadoEm"] = (
+            finalizado_em.isoformat()
+            if finalizado_em
+            else persistido.criado_em.isoformat()
+        )
+    dados.setdefault("totalQuestoes", persistido.preenchidas + persistido.em_branco)
+    dados.setdefault("desempenhoPorCompetencia", [])
+    dados.setdefault("desempenhoPorConteudo", [])
+    dados.setdefault("desempenhoPorNivel", [])
+    dados.setdefault("questoesResumo", [])
+    return dados
+
+
+def _rotulo_competencia(valor: object) -> str:
+    if isinstance(valor, dict):
+        for chave in ("nome", "titulo", "codigo", "id"):
+            bruto = valor.get(chave)
+            if bruto:
+                return str(bruto)
+    texto = str(valor or "").strip()
+    return texto or "Sem competencia cadastrada"
+
+
+def _nova_metrica() -> dict:
+    return {
+        "totalQuestoes": 0,
+        "preenchidas": 0,
+        "acertos": 0,
+        "erros": 0,
+        "emBranco": 0,
+        "tempoTotalSegundos": 0,
+    }
+
+
+def _somar_metrica(mapa: dict[str, dict], chave: str, *, respondida: bool, correta: bool, tempo: int) -> None:
+    item = mapa.setdefault(chave, _nova_metrica())
+    item["totalQuestoes"] += 1
+    item["tempoTotalSegundos"] += max(0, int(tempo or 0))
+    if not respondida:
+        item["emBranco"] += 1
+        return
+    item["preenchidas"] += 1
+    if correta:
+        item["acertos"] += 1
+    else:
+        item["erros"] += 1
+
+
+def _metricas_ordenadas(mapa: dict[str, dict], campo: str) -> list[dict]:
+    saida: list[dict] = []
+    for chave, item in sorted(mapa.items(), key=lambda par: par[0].lower()):
+        total = int(item["totalQuestoes"] or 0)
+        acertos = int(item["acertos"] or 0)
+        tempo_total = int(item["tempoTotalSegundos"] or 0)
+        linha = {
+            campo: chave,
+            "rotulo": chave,
+            "totalQuestoes": total,
+            "preenchidas": int(item["preenchidas"] or 0),
+            "acertos": acertos,
+            "erros": int(item["erros"] or 0),
+            "emBranco": int(item["emBranco"] or 0),
+            "taxaAcerto": round(acertos / total, 2) if total else 0.0,
+            "tempoMedioSegundos": round(tempo_total / total) if total else 0,
+        }
+        if campo == "competencia":
+            linha["mediaEstadual"] = 0.0
+        saida.append(linha)
+    return saida
+
+
+def _desempenho_pedagogico(simulado: Simulado, respostas: list[Resposta]) -> dict:
+    respostas_por_questao = {r.questao_id: r for r in respostas}
+    competencias: dict[str, dict] = {}
+    conteudos: dict[str, dict] = {}
+    niveis: dict[str, dict] = {}
+    resumo_questoes: list[dict] = []
+
+    for ordem, sq in enumerate(sorted(simulado.questoes, key=lambda x: x.ordem_questao), start=1):
+        q = sq.questao
+        if q is None:
+            continue
+        resposta = respostas_por_questao.get(q.id)
+        respondida = bool(
+            resposta
+            and resposta.status == "respondida"
+            and resposta.alternativa_id is not None
+        )
+        correta = bool(resposta.correta) if respondida and resposta else False
+        tempo = int(resposta.tempo_gasto_segundos or 0) if resposta else 0
+        status = "acerto" if correta else ("erro" if respondida else "em_branco")
+
+        comps = [_rotulo_competencia(c) for c in (q.competencias or [])]
+        if not comps:
+            comps = ["Sem competencia cadastrada"]
+        conteudo = q.conteudo.nome if q.conteudo else "Sem conteudo cadastrado"
+        nivel = q.nivel.nome if q.nivel else "Sem nivel cadastrado"
+
+        for comp in comps:
+            _somar_metrica(competencias, comp, respondida=respondida, correta=correta, tempo=tempo)
+        _somar_metrica(conteudos, conteudo, respondida=respondida, correta=correta, tempo=tempo)
+        _somar_metrica(niveis, nivel, respondida=respondida, correta=correta, tempo=tempo)
+
+        resumo_questoes.append(
+            {
+                "questaoId": str(q.id),
+                "ordem": ordem,
+                "status": status,
+                "correta": correta,
+                "respondida": respondida,
+                "conteudo": conteudo,
+                "nivel": nivel,
+                "competencias": comps,
+                "tempoGastoSegundos": tempo,
+            }
+        )
+
+    return {
+        "desempenhoPorCompetencia": _metricas_ordenadas(competencias, "competencia"),
+        "desempenhoPorConteudo": _metricas_ordenadas(conteudos, "conteudo"),
+        "desempenhoPorNivel": _metricas_ordenadas(niveis, "nivel"),
+        "questoesResumo": resumo_questoes,
+    }
+
+
 def _computar_resultado(
     sessao: Session,
     aluno_id: int,
     simulado: Simulado,
     *,
     incluir_sem_respostas: bool = False,
+    usar_persistido: bool = True,
+    tentativa_atual: SimuladoTentativa | None = None,
 ) -> dict | None:
     """Calcula o ResultadoSimulado do aluno a partir das respostas no banco."""
-    persistido = prova_avancada_service.resultado_persistido(
-        sessao, simulado_id=simulado.id, aluno_id=aluno_id,
-    )
-    if persistido is not None:
-        dados = dict(persistido.resultado_json or {})
-        dados.setdefault("id", f"res_{aluno_id}_{simulado.id}_{persistido.tentativa_id}")
-        dados.setdefault("simuladoId", str(simulado.id))
-        dados.setdefault("alunoId", str(aluno_id))
-        dados.setdefault("tentativaId", str(persistido.tentativa_id))
-        dados.setdefault("notaFinal", persistido.nota_final)
-        dados.setdefault("preenchidas", persistido.preenchidas)
-        dados.setdefault("acertos", persistido.acertos)
-        dados.setdefault("erros", persistido.erros)
-        dados.setdefault("emBranco", persistido.em_branco)
-        dados.setdefault("tempoTotalSegundos", persistido.tempo_total_segundos)
-        return dados
+    if usar_persistido:
+        persistido = prova_avancada_service.resultado_persistido(
+            sessao, simulado_id=simulado.id, aluno_id=aluno_id,
+        )
+        if persistido is not None:
+            return _serializar_resultado_persistido(persistido)
 
     ids_questoes = {sq.questao_id for sq in simulado.questoes}
     respostas = sessao.scalars(
@@ -317,7 +570,7 @@ def _computar_resultado(
     primeira = min(_tempos) if _tempos else None
     ultima = max(_tempos) if _tempos else None
     inscricao = _inscricao_simulado_aluno(sessao, aluno_id, simulado.id)
-    tentativa = prova_avancada_service.tentativa_mais_recente(
+    tentativa = tentativa_atual or prova_avancada_service.tentativa_mais_recente(
         sessao, simulado_id=simulado.id, aluno_id=aluno_id,
     )
     finalizado_em = (
@@ -328,11 +581,14 @@ def _computar_resultado(
     )
     # Tempo real gasto = da 1ª à última resposta (autosave grava cada uma na hora).
     tempo_total = sum(int(r.tempo_gasto_segundos or 0) for r in respostas)
+    desempenho = _desempenho_pedagogico(simulado, respostas)
     return {
         "id": f"res_{aluno_id}_{simulado.id}_{tentativa.id if tentativa else 'legacy'}",
         "simuladoId": str(simulado.id),
         "alunoId": str(aluno_id),
         "tentativaId": str(tentativa.id) if tentativa else None,
+        "tentativaNumero": tentativa.numero if tentativa else None,
+        "statusTentativa": tentativa.status if tentativa else None,
         "respostas": [
             {
                 "questaoId": str(r.questao_id),
@@ -345,6 +601,7 @@ def _computar_resultado(
             for r in respostas
         ],
         "notaFinal": nota,
+        "totalQuestoes": total_questoes,
         "preenchidas": respondidas,
         "acertos": acertos,
         "erros": erros,
@@ -352,7 +609,7 @@ def _computar_resultado(
         "tempoTotalSegundos": tempo_total,
         "iniciadoEm": primeira.isoformat() if primeira else (finalizado_em.isoformat() if finalizado_em else None),
         "finalizadoEm": finalizado_em.isoformat() if finalizado_em else None,
-        "desempenhoPorCompetencia": [],
+        **desempenho,
     }
 
 
@@ -831,6 +1088,7 @@ def aluno_simulado(
     ).all()
     return {
         "simulado": _serializar_simulado(s),
+        "acessibilidade": _acessibilidade_aluno_simulado(sessao, aluno, s),
         "questoes": questoes,
         "respostas": [
             {
@@ -862,6 +1120,17 @@ def aluno_resultado(
     resultado = _computar_resultado(sessao, aluno.id, s)
     if resultado is None:
         raise HTTPException(status_code=404, detail="Resultado não disponível.")
+    tentativas = [
+        _serializar_resultado_persistido(r)
+        for r in sessao.scalars(
+            select(ResultadoSimulado)
+            .where(
+                ResultadoSimulado.aluno_id == aluno.id,
+                ResultadoSimulado.simulado_id == s.id,
+            )
+            .order_by(ResultadoSimulado.criado_em.desc(), ResultadoSimulado.id.desc())
+        ).all()
+    ]
     questoes = [
         _serializar_questao_para_aluno(sq.questao, incluir_gabarito=True)
         for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
@@ -870,6 +1139,7 @@ def aluno_resultado(
     return {
         "simulado": _serializar_simulado(s),
         "resultado": resultado,
+        "tentativas": tentativas,
         "questoes": questoes,
         "diagnostico": None,  # diagnóstico de IA não tem origem no banco
         "mensagem": None,
@@ -898,6 +1168,42 @@ def _usuario_card(u: Usuario) -> dict:
 
 def _turmas_do_gestor(sessao: Session, gestor: Usuario) -> list[Turma]:
     return _turmas_do_usuario(sessao, gestor)
+
+
+def _serializar_turma_resumo(turma: Turma, *, limite_alunos: int = 8) -> dict:
+    simulados = list(turma.simulados or [])
+    alunos = [a for a in (turma.alunos or []) if a.usuario]
+    return {
+        "id": str(turma.id),
+        "nome": turma.nome or f"Turma {turma.id}",
+        "escolaId": str(turma.escola_id),
+        "serie": _SERIE_NOME_PARA_CODE.get(turma.serie.nome, "") if turma.serie else "",
+        "turno": "matutino",
+        "anoLetivo": turma.ano_letivo,
+        "alunoIds": [str(a.id) for a in alunos],
+        "alunos": [
+            {
+                "id": str(a.id),
+                "usuarioId": str(a.usuario_id),
+                "nome": a.usuario.nome,
+                "email": a.usuario.email,
+                "necessitaSuporte": bool(a.necessita_suporte),
+            }
+            for a in alunos[:limite_alunos]
+        ],
+        "ativa": True,
+        "criadaEm": datetime.now(timezone.utc).isoformat(),
+        "escolaNome": turma.escola.nome if turma.escola else "",
+        "totalAlunos": len(alunos),
+        "totalComAdaptacao": sum(1 for a in alunos if a.necessita_suporte),
+        "totalSimulados": len(simulados),
+        "simuladosLiberados": sum(
+            1 for s in simulados if _status_simulado_front(s.status) == "liberado"
+        ),
+        "simuladosFinalizados": sum(
+            1 for s in simulados if _status_simulado_front(s.status) == "finalizado"
+        ),
+    }
 
 
 def _media_simulado(sessao: Session, simulado: Simulado) -> float | None:
@@ -1144,42 +1450,243 @@ def gestor_turmas(
 ) -> dict:
     dados = []
     for t in _turmas_do_gestor(sessao, usuario):
-        simulados = list(t.simulados or [])
-        alunos = [a for a in (t.alunos or []) if a.usuario]
-        dados.append(
+        dados.append(_serializar_turma_resumo(t))
+    return {"dados": dados}
+
+
+@router.get("/gestor/turmas/{turma_id}", dependencies=[Depends(montadores_prova)])
+def gestor_turma_detalhe(
+    turma_id: int,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    turma = _exigir_turma_permitida(sessao, usuario, turma_id)
+    alunos = [a for a in (turma.alunos or []) if a.usuario]
+    simulados = (
+        sessao.scalars(
+            select(Simulado)
+            .where(Simulado.turma_id == turma.id)
+            .order_by(Simulado.criado_em.desc())
+        ).all()
+    )
+
+    alunos_detalhe = []
+    resultados_recentes = []
+    for aluno in sorted(alunos, key=lambda a: a.usuario.nome if a.usuario else ""):
+        resultados = _resultados_do_aluno(sessao, aluno)
+        media = round(sum(r["notaFinal"] for r in resultados) / len(resultados), 1) if resultados else None
+        ultimo = resultados[0] if resultados else None
+        if ultimo:
+            resultados_recentes.append(
+                {
+                    "alunoId": str(aluno.id),
+                    "alunoNome": aluno.usuario.nome,
+                    "simuladoId": ultimo["simuladoId"],
+                    "notaFinal": ultimo["notaFinal"],
+                    "acertos": ultimo["acertos"],
+                    "erros": ultimo["erros"],
+                    "emBranco": ultimo["emBranco"],
+                    "finalizadoEm": ultimo["finalizadoEm"],
+                }
+            )
+        alunos_detalhe.append(
             {
-                "id": str(t.id),
-                "nome": t.nome or f"Turma {t.id}",
-                "escolaId": str(t.escola_id),
-                "serie": _SERIE_NOME_PARA_CODE.get(t.serie.nome, "") if t.serie else "",
-                "turno": "matutino",
-                "anoLetivo": t.ano_letivo,
-                "alunoIds": [str(a.id) for a in alunos],
-                "alunos": [
-                    {
-                        "id": str(a.id),
-                        "usuarioId": str(a.usuario_id),
-                        "nome": a.usuario.nome,
-                        "email": a.usuario.email,
-                        "necessitaSuporte": bool(a.necessita_suporte),
-                    }
-                    for a in alunos[:8]
-                ],
-                "ativa": True,
-                "criadaEm": datetime.now(timezone.utc).isoformat(),
-                "escolaNome": t.escola.nome if t.escola else "",
-                "totalAlunos": len(alunos),
-                "totalComAdaptacao": sum(1 for a in alunos if a.necessita_suporte),
-                "totalSimulados": len(simulados),
-                "simuladosLiberados": sum(
-                    1 for s in simulados if _status_simulado_front(s.status) == "liberado"
-                ),
-                "simuladosFinalizados": sum(
-                    1 for s in simulados if _status_simulado_front(s.status) == "finalizado"
-                ),
+                "id": str(aluno.id),
+                "usuarioId": str(aluno.usuario_id),
+                "nome": aluno.usuario.nome,
+                "email": aluno.usuario.email,
+                "fotoUrl": aluno.usuario.foto_url,
+                "necessitaSuporte": bool(aluno.necessita_suporte),
+                "adaptacoes": aluno.perfil_cognitivo or [],
+                "media": media,
+                "probabilidadeRisco": _prob_risco_media(aluno, media),
+                "totalResultados": len(resultados),
+                "ultimoResultado": ultimo,
+                "competenciasFracas": _competencias_fracas_aluno(sessao, aluno),
             }
         )
-    return {"dados": dados}
+
+    simulados_detalhe = []
+    for sim in simulados:
+        resultado_media = _media_simulado(sessao, sim)
+        acompanhamento = acompanhar_simulado(sim.id, usuario, sessao)
+        simulados_detalhe.append(
+            {
+                **_serializar_simulado(sim),
+                "media": resultado_media,
+                "totalQuestoes": len(sim.questoes),
+                "totalAlunos": len(_alunos_do_simulado(sim)),
+                "contagens": acompanhamento["contagens"],
+            }
+        )
+
+    total_finalizados = sum(1 for s in simulados_detalhe if s["status"] == "finalizado")
+    medias_alunos = [a["media"] for a in alunos_detalhe if a["media"] is not None]
+    media_turma = round(sum(medias_alunos) / len(medias_alunos), 1) if medias_alunos else None
+    alunos_risco = [
+        a for a in alunos_detalhe
+        if a["necessitaSuporte"] or a["probabilidadeRisco"] >= 0.5
+    ]
+    alertas = []
+    if alunos_risco:
+        alertas.append(
+            {
+                "tipo": "risco",
+                "severidade": "alta" if any(a["probabilidadeRisco"] >= 0.7 for a in alunos_risco) else "media",
+                "titulo": "Alunos precisam de acompanhamento",
+                "mensagem": f"{len(alunos_risco)} aluno(s) com suporte/adaptacao ou risco pedagogico.",
+                "quantidade": len(alunos_risco),
+            }
+        )
+    pendentes = [
+        s for s in simulados_detalhe
+        if s["status"] in ("rascunho", "em_curadoria", "liberado", "em_andamento")
+    ]
+    if pendentes:
+        alertas.append(
+            {
+                "tipo": "prova_pendente",
+                "severidade": "media",
+                "titulo": "Provas aguardam conclusao",
+                "mensagem": f"{len(pendentes)} prova(s) ainda nao finalizadas.",
+                "quantidade": len(pendentes),
+            }
+        )
+
+    resultados_recentes.sort(key=lambda r: r["finalizadoEm"] or "", reverse=True)
+    return {
+        "turma": _serializar_turma_resumo(turma, limite_alunos=200),
+        "kpis": {
+            "totalAlunos": len(alunos),
+            "totalComAdaptacao": sum(1 for a in alunos if a.necessita_suporte),
+            "totalSimulados": len(simulados),
+            "simuladosFinalizados": total_finalizados,
+            "mediaTurma": media_turma,
+            "alunosEmRisco": len(alunos_risco),
+        },
+        "alunos": alunos_detalhe,
+        "simulados": simulados_detalhe,
+        "resultadosRecentes": resultados_recentes[:12],
+        "alertas": alertas,
+    }
+
+
+@router.get(
+    "/gestor/turmas/{turma_id}/relatorio/exportar",
+    dependencies=[Depends(montadores_prova)],
+)
+def exportar_relatorio_turma(
+    turma_id: int,
+    formato: str = Query("csv", pattern="^(csv|json)$"),
+    secao: str = Query("alunos", pattern="^(alunos|simulados|resultados)$"),
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> object:
+    relatorio = gestor_turma_detalhe(turma_id, usuario, sessao)
+    if formato == "json":
+        return relatorio
+
+    turma = relatorio["turma"]
+    turma_nome = turma.get("nome") or f"Turma {turma_id}"
+    nome_base = f"relatorio-turma-{turma_id}"
+
+    if secao == "simulados":
+        linhas = [
+            {
+                "turma_id": turma["id"],
+                "turma_nome": turma_nome,
+                "simulado_id": item.get("id"),
+                "simulado_nome": item.get("nome") or item.get("parametros", {}).get("nome"),
+                "status": item.get("status"),
+                "media": item.get("media"),
+                "total_questoes": item.get("totalQuestoes"),
+                "total_alunos": item.get("totalAlunos"),
+            }
+            for item in relatorio["simulados"]
+        ]
+        return _csv_response(
+            f"{nome_base}-simulados.csv",
+            linhas,
+            [
+                "turma_id",
+                "turma_nome",
+                "simulado_id",
+                "simulado_nome",
+                "status",
+                "media",
+                "total_questoes",
+                "total_alunos",
+            ],
+        )
+
+    if secao == "resultados":
+        linhas = [
+            {
+                "turma_id": turma["id"],
+                "turma_nome": turma_nome,
+                "aluno_id": item.get("alunoId"),
+                "aluno_nome": item.get("alunoNome"),
+                "simulado_id": item.get("simuladoId"),
+                "nota_final": item.get("notaFinal"),
+                "acertos": item.get("acertos"),
+                "erros": item.get("erros"),
+                "em_branco": item.get("emBranco"),
+                "finalizado_em": item.get("finalizadoEm"),
+            }
+            for item in relatorio["resultadosRecentes"]
+        ]
+        return _csv_response(
+            f"{nome_base}-resultados.csv",
+            linhas,
+            [
+                "turma_id",
+                "turma_nome",
+                "aluno_id",
+                "aluno_nome",
+                "simulado_id",
+                "nota_final",
+                "acertos",
+                "erros",
+                "em_branco",
+                "finalizado_em",
+            ],
+        )
+
+    linhas = [
+        {
+            "turma_id": turma["id"],
+            "turma_nome": turma_nome,
+            "aluno_id": item.get("id"),
+            "usuario_id": item.get("usuarioId"),
+            "nome": item.get("nome"),
+            "email": item.get("email"),
+            "necessita_suporte": item.get("necessitaSuporte"),
+            "media": item.get("media"),
+            "probabilidade_risco": item.get("probabilidadeRisco"),
+            "total_resultados": item.get("totalResultados"),
+            "adaptacoes": "; ".join(item.get("adaptacoes") or []),
+            "competencias_fracas": "; ".join(item.get("competenciasFracas") or []),
+        }
+        for item in relatorio["alunos"]
+    ]
+    return _csv_response(
+        f"{nome_base}-alunos.csv",
+        linhas,
+        [
+            "turma_id",
+            "turma_nome",
+            "aluno_id",
+            "usuario_id",
+            "nome",
+            "email",
+            "necessita_suporte",
+            "media",
+            "probabilidade_risco",
+            "total_resultados",
+            "adaptacoes",
+            "competencias_fracas",
+        ],
+    )
 
 
 @router.get("/gestor/simulados", dependencies=[Depends(montadores_prova)])
@@ -1261,6 +1768,7 @@ def criar_simulado_rascunho(
     sessao: Session = Depends(get_session),
 ) -> dict:
     """Cria um simulado em rascunho a partir do ParametrosSimulado do front."""
+    parametros = _aplicar_defaults_parametros_prova(sessao, parametros)
     turma_id = parametros.get("turmaId")
     try:
         turma_id = int(turma_id) if turma_id is not None else None
@@ -1303,11 +1811,12 @@ def _selecionar_questoes_por_parametros(
     usuario: Usuario,
     parametros: dict,
 ) -> tuple[list[Questao], list[str]]:
+    minimo, maximo = _limites_prova(sessao)
     quantidade = _inteiro_positivo(
         parametros.get("quantidadeQuestoes", parametros.get("quantidade")),
         10,
     )
-    quantidade = max(1, min(quantidade, 100))
+    quantidade = max(minimo, min(quantidade, maximo))
     avisos: list[str] = []
     q = (
         sessao.query(Questao)
@@ -1412,6 +1921,7 @@ def gerar_simulado_automaticamente(
     usuario: Usuario = Depends(montadores_prova),
     sessao: Session = Depends(get_session),
 ) -> dict:
+    parametros = _aplicar_defaults_parametros_prova(sessao, parametros)
     turma_id_raw = parametros.get("turmaId")
     try:
         turma_id = int(turma_id_raw) if turma_id_raw is not None else None
@@ -1557,6 +2067,18 @@ def _usuario_aluno_card(u: Usuario, aluno: Aluno) -> dict:
 
 
 def _resultados_do_aluno(sessao: Session, aluno: Aluno) -> list[dict]:
+    persistidos = [
+        _serializar_resultado_persistido(r)
+        for r in sessao.scalars(
+            select(ResultadoSimulado)
+            .where(ResultadoSimulado.aluno_id == aluno.id)
+            .order_by(ResultadoSimulado.criado_em.desc(), ResultadoSimulado.id.desc())
+        ).all()
+    ]
+    tentativas_persistidas = {
+        str(r["tentativaId"]) for r in persistidos if r.get("tentativaId")
+    }
+
     sim_ids = set(sessao.scalars(
         select(Resposta.simulado_id).where(Resposta.aluno_id == aluno.id).distinct()
     ).all())
@@ -1568,12 +2090,13 @@ def _resultados_do_aluno(sessao: Session, aluno: Aluno) -> list[dict]:
             )
         ).all()
     )
-    out = []
+    out = list(persistidos)
     for sid in sim_ids:
         s = sessao.get(Simulado, sid)
         if s:
             r = _computar_resultado(sessao, aluno.id, s, incluir_sem_respostas=True)
-            if r:
+            tentativa_id = str(r.get("tentativaId")) if r and r.get("tentativaId") else None
+            if r and (tentativa_id is None or tentativa_id not in tentativas_persistidas):
                 out.append(r)
     out.sort(key=lambda x: x["finalizadoEm"] or "", reverse=True)
     return out
@@ -2007,7 +2530,7 @@ def validar_prova(
     return {
         "simuladoId": str(sim.id),
         "status": _status_simulado_front(sim.status),
-        **prova_avancada_service.validar_simulado(sim),
+        **_validar_simulado_com_config(sessao, sim),
     }
 
 
@@ -2039,7 +2562,7 @@ def preview_prova(
             else None
         ),
         "questoes": questoes_snapshot,
-        "validacao": prova_avancada_service.validar_simulado(sim),
+        "validacao": _validar_simulado_com_config(sessao, sim),
     }
 
 
@@ -2056,7 +2579,7 @@ def liberar_simulado(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_simulado(sessao, usuario, sim)
-    validacao = prova_avancada_service.validar_simulado(sim)
+    validacao = _validar_simulado_com_config(sessao, sim)
     if not validacao["ok"]:
         raise HTTPException(status_code=422, detail=validacao)
     snapshot = prova_avancada_service.criar_ou_obter_snapshot(
@@ -2228,9 +2751,18 @@ def reabrir_tentativa_aluno(
     _exigir_acesso_simulado(sessao, usuario, sim)
     if not _aluno_no_escopo_da_prova(usuario, sim, aluno):
         raise HTTPException(status_code=403, detail="Aluno fora do escopo da prova.")
+    config_provas = _config_provas(sessao)
+    if config_provas.get("permitirReabrirAposFinalizacao") is False:
+        raise HTTPException(status_code=403, detail="Reabertura de tentativa desativada.")
     motivo = str(corpo.get("motivo") or "").strip()
-    if len(motivo) < 5:
-        raise HTTPException(status_code=422, detail="Motivo da reabertura e obrigatorio.")
+    minimo_motivo = _inteiro_positivo(
+        config_provas.get("motivoReaberturaMinCaracteres"), 5,
+    )
+    if len(motivo) < minimo_motivo:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Motivo da reabertura e obrigatorio (minimo {minimo_motivo} caracteres).",
+        )
     tentativa = prova_avancada_service.reabrir_para_aluno(
         sessao, simulado=sim, aluno=aluno, usuario=usuario, motivo=motivo,
     )
@@ -2424,6 +2956,100 @@ def relatorio_simulado(
     }
 
 
+def _csv_response(nome_arquivo: str, linhas: list[dict], campos: list[str]) -> Response:
+    saida = StringIO()
+    saida.write("\ufeff")
+    escritor = csv.DictWriter(saida, fieldnames=campos, extrasaction="ignore")
+    escritor.writeheader()
+    for linha in linhas:
+        escritor.writerow(linha)
+    return Response(
+        content=saida.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
+
+
+@router.get(
+    "/gestor/simulados/{simulado_id}/relatorio/exportar",
+    dependencies=[Depends(montadores_prova)],
+)
+def exportar_relatorio_simulado(
+    simulado_id: int,
+    formato: str = Query("csv", pattern="^(csv|json)$"),
+    secao: str = Query("tabela", pattern="^(tabela|competencias)$"),
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> object:
+    relatorio = relatorio_simulado(simulado_id, usuario, sessao)
+    if formato == "json":
+        return relatorio
+
+    simulado = relatorio["simulado"]
+    nome_base = f"relatorio-simulado-{simulado_id}"
+    nome_simulado = simulado["parametros"].get("nome") or simulado["nome"]
+    if secao == "competencias":
+        linhas = [
+            {
+                "simulado_id": simulado["id"],
+                "simulado_nome": nome_simulado,
+                "competencia": item.get("competencia"),
+                "taxa_acerto": item.get("taxaAcerto"),
+                "acertos": item.get("acertos"),
+                "erros": item.get("erros"),
+                "total": item.get("total"),
+            }
+            for item in relatorio["competencias"]
+        ]
+        return _csv_response(
+            f"{nome_base}-competencias.csv",
+            linhas,
+            [
+                "simulado_id",
+                "simulado_nome",
+                "competencia",
+                "taxa_acerto",
+                "acertos",
+                "erros",
+                "total",
+            ],
+        )
+
+    linhas = [
+        {
+            "simulado_id": simulado["id"],
+            "simulado_nome": nome_simulado,
+            "aluno_id": item.get("alunoId"),
+            "aluno_nome": item.get("alunoNome"),
+            "nota_final": item.get("notaFinal"),
+            "acertos": item.get("acertos"),
+            "erros": item.get("erros"),
+            "em_branco": item.get("emBranco"),
+            "tempo_total_segundos": item.get("tempoTotalSegundos"),
+            "em_risco": item.get("emRisco"),
+            "adaptacoes": "; ".join(item.get("adaptacoes") or []),
+        }
+        for item in relatorio["tabela"]
+    ]
+    return _csv_response(
+        f"{nome_base}-alunos.csv",
+        linhas,
+        [
+            "simulado_id",
+            "simulado_nome",
+            "aluno_id",
+            "aluno_nome",
+            "nota_final",
+            "acertos",
+            "erros",
+            "em_branco",
+            "tempo_total_segundos",
+            "em_risco",
+            "adaptacoes",
+        ],
+    )
+
+
 @router.post("/admin/questoes/importar", dependencies=[Depends(so_admin)])
 def importar_questoes(
     corpo: dict,
@@ -2498,6 +3124,7 @@ def importar_questoes(
 @router.post("/aluno/simulado/{simulado_id}/iniciar")
 def aluno_iniciar(
     simulado_id: int,
+    request: Request,
     usuario: Usuario = Depends(autenticado),
     sessao: Session = Depends(get_session),
 ) -> dict:
@@ -2513,8 +3140,18 @@ def aluno_iniciar(
     inscricao = _inscricao_simulado_aluno(sessao, aluno.id, sim.id)
     if inscricao is not None and inscricao.status != "finalizado":
         inscricao.status = "em_andamento"
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="iniciar_simulado",
+        alvo_tipo="simulado",
+        alvo_id=sim.id,
+        detalhes=f"Aluno #{aluno.id} iniciou tentativa #{tentativa.numero} do simulado {sim.titulo}.",
+        request=request,
+    )
     sessao.commit()
-    tempo = int(_normalizar_parametros_simulado(sim).get("tempoLimiteMinutos", 60)) * 60
+    acessibilidade = _acessibilidade_aluno_simulado(sessao, aluno, sim)
+    tempo = int(acessibilidade["tempoTotalSegundos"])
     agora = datetime.now(timezone.utc).isoformat()
     return {
         "simuladoId": str(sim.id),
@@ -2526,6 +3163,7 @@ def aluno_iniciar(
         "tempoRestanteSegundos": tempo,
         "status": "em_andamento",
         "conexaoOk": True,
+        "acessibilidade": acessibilidade,
     }
 
 
@@ -2637,7 +3275,14 @@ def aluno_finalizar(
         request=request,
     )
     _marcar_simulado_finalizado_para_aluno(sessao, aluno, sim)
-    resultado = _computar_resultado(sessao, aluno.id, sim, incluir_sem_respostas=True)
+    resultado = _computar_resultado(
+        sessao,
+        aluno.id,
+        sim,
+        incluir_sem_respostas=True,
+        usar_persistido=False,
+        tentativa_atual=tentativa,
+    )
     prova_avancada_service.salvar_resultado(sessao, tentativa=tentativa, resultado=resultado or {})
     prova_avancada_service.notificar(
         sessao,

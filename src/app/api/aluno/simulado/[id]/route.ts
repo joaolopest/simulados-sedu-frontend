@@ -4,6 +4,7 @@ import { mapQuestao, type QuestaoBackend } from "@/lib/backend-maps";
 
 interface RespostaBackend {
   simulado: unknown;
+  acessibilidade?: unknown;
   questoes: QuestaoBackend[];
   respostas?: unknown[];
 }
@@ -20,6 +21,7 @@ export async function GET(
     });
     return NextResponse.json({
       simulado: resp.simulado,
+      acessibilidade: resp.acessibilidade,
       questoes: (resp.questoes ?? []).map(mapQuestao),
       respostas: resp.respostas ?? [],
     });

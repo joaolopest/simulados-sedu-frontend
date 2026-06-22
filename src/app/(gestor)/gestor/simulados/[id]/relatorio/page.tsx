@@ -162,6 +162,10 @@ export default function PaginaRelatorioSimulado({
   // ----------------------------------------------
 
   function exportarCsv(): void {
+    if (typeof window !== "undefined" && id) {
+      window.location.href = `/api/provas/${id}/relatorio/exportar?formato=csv&secao=tabela`;
+      return;
+    }
     if (!data) return;
     try {
       const linhas = data.tabela.map((linha) => ({
@@ -329,7 +333,16 @@ export default function PaginaRelatorioSimulado({
           </Button>
           <Button variant="outline" size="sm" onClick={exportarCsv}>
             <FileSpreadsheet className="size-3.5" aria-hidden />
-            Exportar CSV
+            CSV alunos
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              href={`/api/provas/${id}/relatorio/exportar?formato=csv&secao=competencias`}
+              download
+            >
+              <FileSpreadsheet className="size-3.5" aria-hidden />
+              CSV competências
+            </Link>
           </Button>
         </div>
       </header>

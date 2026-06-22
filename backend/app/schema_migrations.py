@@ -20,6 +20,9 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         $$
         """,
         """
+        ALTER TYPE statusquestao ADD VALUE IF NOT EXISTS 'EM_REVISAO'
+        """,
+        """
         ALTER TYPE perfilusuario ADD VALUE IF NOT EXISTS 'PROFESSOR'
         """,
         """
@@ -40,6 +43,54 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         """
         ALTER TABLE usuarios
         ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP WITH TIME ZONE
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS configuracoes_sistema (
+            id SERIAL PRIMARY KEY,
+            chave VARCHAR(80) UNIQUE NOT NULL,
+            valor_json JSON NOT NULL DEFAULT '{}'::json,
+            descricao TEXT,
+            atualizado_por_id INTEGER REFERENCES usuarios(id),
+            criado_em TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            atualizado_em TIMESTAMP WITH TIME ZONE
+        )
+        """,
+        """
+        INSERT INTO configuracoes_sistema (chave, valor_json, descricao)
+        VALUES
+            (
+                'provas',
+                '{
+                    "tempoPadraoMinutos": 60,
+                    "quantidadeMinimaQuestoes": 3,
+                    "quantidadeMaximaQuestoes": 100,
+                    "politicaReabertura": "justificativa_obrigatoria",
+                    "permitirReabrirAposFinalizacao": true,
+                    "motivoReaberturaMinCaracteres": 5
+                }'::json,
+                'Regras globais de criação, validação, liberação e reabertura de provas.'
+            ),
+            (
+                'acessibilidade',
+                '{
+                    "tempoExtraPercentualPadrao": 25,
+                    "permitirFonteMaior": true,
+                    "permitirAltoContraste": true,
+                    "permitirLeituraSimplificada": true,
+                    "adaptacoesDisponiveis": ["tdah", "dislexia", "deficiencia_visual", "autismo"]
+                }'::json,
+                'Parâmetros globais de acessibilidade e adaptações pedagógicas.'
+            ),
+            (
+                'resultados',
+                '{
+                    "mostrarGabaritoAoAluno": true,
+                    "mostrarResultadoImediato": true,
+                    "notaMinimaRecomendada": 7
+                }'::json,
+                'Regras globais de visualização e interpretação dos resultados.'
+            )
+        ON CONFLICT (chave) DO NOTHING
         """,
         """
         ALTER TABLE escolas
@@ -141,6 +192,26 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         """
         CREATE INDEX IF NOT EXISTS ix_revisoes_questao_status_escola
         ON revisoes_questao (status, escola_id)
+        """,
+        """
+        ALTER TABLE revisoes_questao
+        ADD COLUMN IF NOT EXISTS proposta_json JSON
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS questao_versoes (
+            id SERIAL PRIMARY KEY,
+            questao_id INTEGER NOT NULL REFERENCES questoes(id) ON DELETE CASCADE,
+            versao INTEGER NOT NULL,
+            snapshot_json JSON NOT NULL DEFAULT '{}'::json,
+            criado_por_id INTEGER REFERENCES usuarios(id),
+            motivo TEXT,
+            criado_em TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+            CONSTRAINT uq_questao_versao UNIQUE (questao_id, versao)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_questao_versoes_questao
+        ON questao_versoes (questao_id)
         """,
         """
         CREATE TABLE IF NOT EXISTS simulado_inscricoes (

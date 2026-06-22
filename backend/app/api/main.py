@@ -4,12 +4,21 @@ A lógica de negócio fica nas camadas de domínio, serviços e rotas específic
 Este módulo apenas monta a aplicação HTTP, registra routers e expõe healthcheck.
 """
 
-from fastapi import FastAPI, Request
+import logging
+import os
+from time import perf_counter
+from uuid import uuid4
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.deps import get_session
+from app.api.permissoes import so_admin
 from app.api.routers import (
     aluno,
     assuntos,
@@ -18,6 +27,7 @@ from app.api.routers import (
     avisos,
     cadastro,
     calendario,
+    configuracoes,
     estrutura,
     etapas,
     etiquetas,
@@ -31,6 +41,30 @@ from app.api.routers import (
     simulados,
     usuarios,
 )
+from app.database import engine
+from app.models import Aluno, Escola, Questao, Resposta, Simulado, Usuario
+
+logger = logging.getLogger("sedu.api")
+PREFIXO_BACKEND_VERCEL = "/_/backend"
+
+
+def _origens_cors() -> list[str]:
+    bruto = os.environ.get("CORS_ORIGINS")
+    if bruto:
+        return [origem.strip() for origem in bruto.split(",") if origem.strip()]
+
+    origens = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "https://simulados-sedu.vercel.app",
+        "https://simulados-sedu-tempestt.vercel.app",
+    ]
+    vercel_url = os.environ.get("VERCEL_URL")
+    if vercel_url:
+        origens.append(f"https://{vercel_url}")
+    return origens
 
 app = FastAPI(
     title="SEDUC Simulados — API do Banco de Questões",
@@ -45,10 +79,63 @@ app = FastAPI(
 # domínio real do frontend.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origens_cors(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _normalizar_prefixo_backend_vercel(request: Request) -> str:
+    """Aceita chamadas diretas pelo prefixo publico do backend na Vercel."""
+    path_original = str(request.scope.get("path") or "")
+    if path_original == PREFIXO_BACKEND_VERCEL:
+        novo_path = "/"
+    elif path_original.startswith(f"{PREFIXO_BACKEND_VERCEL}/"):
+        novo_path = path_original[len(PREFIXO_BACKEND_VERCEL) :] or "/"
+    else:
+        return path_original
+
+    request.scope["path"] = novo_path
+    raw_path = request.scope.get("raw_path")
+    if isinstance(raw_path, bytes):
+        prefixo = PREFIXO_BACKEND_VERCEL.encode()
+        if raw_path == prefixo:
+            request.scope["raw_path"] = b"/"
+        elif raw_path.startswith(prefixo + b"/"):
+            request.scope["raw_path"] = raw_path[len(prefixo) :] or b"/"
+    return path_original
+
+
+@app.middleware("http")
+async def adicionar_observabilidade(request: Request, call_next):
+    path_original = _normalizar_prefixo_backend_vercel(request)
+    inicio = perf_counter()
+    request_id = request.headers.get("x-request-id") or str(uuid4())
+    try:
+        resposta = await call_next(request)
+    except Exception:
+        duracao_ms = (perf_counter() - inicio) * 1000
+        logger.exception(
+            "request_id=%s method=%s path=%s status=500 duration_ms=%.2f",
+            request_id,
+            request.method,
+            path_original,
+            duracao_ms,
+        )
+        raise
+
+    duracao_ms = (perf_counter() - inicio) * 1000
+    resposta.headers["x-request-id"] = request_id
+    resposta.headers["x-response-time-ms"] = f"{duracao_ms:.2f}"
+    logger.info(
+        "request_id=%s method=%s path=%s status=%s duration_ms=%.2f",
+        request_id,
+        request.method,
+        path_original,
+        resposta.status_code,
+        duracao_ms,
+    )
+    return resposta
 
 
 @app.exception_handler(RequestValidationError)
@@ -95,6 +182,8 @@ async def tratar_erro_http(
         codigo = "NAO_ENCONTRADO"
     elif exc.status_code == 409:
         codigo = "CONFLITO"
+    elif exc.status_code == 429:
+        codigo = "MUITAS_TENTATIVAS"
 
     content = {"codigo": codigo, "mensagem": mensagem}
     if detalhes is not None:
@@ -114,6 +203,7 @@ app.include_router(respostas.router)
 app.include_router(etapas.router)
 app.include_router(avisos.router)
 app.include_router(calendario.router)
+app.include_router(configuracoes.router)
 app.include_router(assuntos.router)
 app.include_router(aluno.router)
 app.include_router(notificacoes.router)
@@ -126,3 +216,53 @@ app.include_router(publico.router)
 def health() -> dict:
     """Healthcheck simples."""
     return {"projeto": "SEDUC Simulados — Banco de Questões", "status": "online"}
+
+@app.get("/health/detalhado", tags=["status"])
+def health_detalhado() -> dict:
+    """Healthcheck com ping real no banco, sem expor credenciais."""
+    inicio = perf_counter()
+    banco = {"status": "online", "latenciaMs": 0.0, "dialeto": engine.dialect.name}
+    try:
+        with engine.connect() as conexao:
+            conexao.execute(text("SELECT 1"))
+    except Exception as exc:
+        banco = {
+            "status": "offline",
+            "latenciaMs": round((perf_counter() - inicio) * 1000, 2),
+            "dialeto": engine.dialect.name,
+            "erro": exc.__class__.__name__,
+        }
+    else:
+        banco["latenciaMs"] = round((perf_counter() - inicio) * 1000, 2)
+
+    return {
+        "projeto": "SEDUC Simulados - Banco de Questoes",
+        "status": "online" if banco["status"] == "online" else "degradado",
+        "api": {"status": "online"},
+        "banco": banco,
+    }
+
+
+@app.get("/diagnostico", tags=["status"], dependencies=[Depends(so_admin)])
+def diagnostico_admin(
+    _usuario: Usuario = Depends(so_admin),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    """Resumo protegido para verificar se a base esta populada e coerente."""
+    contagens = {
+        "usuarios": sessao.scalar(select(func.count(Usuario.id))) or 0,
+        "alunos": sessao.scalar(select(func.count(Aluno.id))) or 0,
+        "escolas": sessao.scalar(select(func.count(Escola.id))) or 0,
+        "questoes": sessao.scalar(select(func.count(Questao.id))) or 0,
+        "simulados": sessao.scalar(select(func.count(Simulado.id))) or 0,
+        "respostas": sessao.scalar(select(func.count(Resposta.id))) or 0,
+    }
+    pendencias = [
+        nome for nome, total in contagens.items() if nome != "respostas" and total == 0
+    ]
+    return {
+        "status": "ok" if not pendencias else "atencao",
+        "contagens": contagens,
+        "pendencias": pendencias,
+        "banco": {"dialeto": engine.dialect.name},
+    }

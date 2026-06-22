@@ -28,6 +28,7 @@ class StatusQuestao(enum.Enum):
     """Ciclo de vida de uma questão no banco (gerenciado pelo Admin)."""
 
     RASCUNHO = "rascunho"        # criada, ainda não disponível
+    EM_REVISAO = "em_revisao"    # aguardando revisao/aprovacao
     PUBLICADA = "publicada"      # disponível para uso em simulados
     ARQUIVADA = "arquivada"      # retirada de circulação
 

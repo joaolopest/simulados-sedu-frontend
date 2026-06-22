@@ -315,7 +315,13 @@ function PainelDetalheTurma({
           >
             Ações rápidas
           </h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Button asChild>
+              <Link href={`/gestor/turmas/${turma.id}`} className="gap-2">
+                <ArrowRight className="size-4" aria-hidden />
+                Detalhes completos
+              </Link>
+            </Button>
             <Button asChild>
               <Link href="/gestor/simulados/novo" className="gap-2">
                 <BookOpenCheck className="size-4" aria-hidden />

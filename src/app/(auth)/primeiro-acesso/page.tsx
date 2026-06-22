@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Check, Eye, EyeOff, Loader, ArrowLeft, X } from "lucide-react";
@@ -105,7 +105,8 @@ function ConteudoPrimeiroAcesso() {
     mode: "onChange",
   });
 
-  const senhaAtual = formulario.watch("senha");
+  const senhaAtual =
+    useWatch({ control: formulario.control, name: "senha" }) ?? "";
   const forca = useMemo(() => calcularForca(senhaAtual), [senhaAtual]);
   const nivel = NIVEIS[Math.max(0, forca - 1)];
 

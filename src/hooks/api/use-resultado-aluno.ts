@@ -14,6 +14,7 @@ import type {
 export interface RespostaResultadoAluno {
   simulado: Simulado;
   resultado: ResultadoSimulado;
+  tentativas?: ResultadoSimulado[];
   questoes: Questao[];
   diagnostico: DiagnosticoSimulado | null;
   mensagem: MensagemResultadoIA | null;

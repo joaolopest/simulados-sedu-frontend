@@ -8,9 +8,31 @@ import time
 
 import jwt
 
-CHAVE_SECRETA = os.environ.get("SEDU_JWT_SECRET", "troque-esta-chave-em-producao")
 ALGORITMO = "HS256"
 HORAS_VALIDADE = 8
+CHAVE_DEV = "sedu-dev-secret-local-nao-use-em-producao"
+
+
+def _ambiente_producao() -> bool:
+    ambiente = (
+        os.environ.get("APP_ENV")
+        or os.environ.get("ENVIRONMENT")
+        or os.environ.get("VERCEL_ENV")
+        or ""
+    ).lower()
+    return ambiente in {"prod", "production"} or bool(os.environ.get("VERCEL"))
+
+
+def _carregar_chave_secreta() -> str:
+    chave = os.environ.get("SEDU_JWT_SECRET")
+    if chave:
+        return chave
+    if _ambiente_producao():
+        raise RuntimeError("SEDU_JWT_SECRET precisa estar configurado em producao.")
+    return CHAVE_DEV
+
+
+CHAVE_SECRETA = _carregar_chave_secreta()
 
 
 def gerar_hash_senha(senha: str) -> str:

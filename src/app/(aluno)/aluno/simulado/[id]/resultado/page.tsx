@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { use, useEffect, useMemo } from "react";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import {
   Target,
   Trophy,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ import {
   cn,
 } from "@/lib/utils";
 import { obterNomeMaterias, obterNomeSerie } from "@/lib/displays";
-import type { Questao, RespostaQuestao } from "@/types";
+import type { DesempenhoAgrupado, Questao, RespostaQuestao } from "@/types";
 
 const LETRAS_ALT = ["A", "B", "C", "D", "E"] as const;
 
@@ -126,6 +127,11 @@ export default function PaginaResultadoSimulado({
         >
           {simulado.parametros.nome}
         </h1>
+        {resultado.tentativaNumero ? (
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            Tentativa {resultado.tentativaNumero}
+          </p>
+        ) : null}
 
         <CirculoNota nota={resultado.notaFinal} cor={corNota} />
 
@@ -187,6 +193,22 @@ export default function PaginaResultadoSimulado({
             ))}
           </ul>
         </section>
+      )}
+
+      {(resultado.desempenhoPorConteudo?.length ?? 0) > 0 && (
+        <BlocoDesempenho
+          titulo="Desempenho por conteúdo"
+          icone={BookOpen}
+          itens={resultado.desempenhoPorConteudo ?? []}
+        />
+      )}
+
+      {(resultado.desempenhoPorNivel?.length ?? 0) > 0 && (
+        <BlocoDesempenho
+          titulo="Desempenho por nível"
+          icone={Target}
+          itens={resultado.desempenhoPorNivel ?? []}
+        />
       )}
 
       {/* SUGESTÕES DE REFORÇO */}
@@ -383,15 +405,13 @@ function CardBreakdown({
 function BarraCompetencia({
   desempenho,
 }: {
-  desempenho: {
-    competencia: string;
-    totalQuestoes: number;
-    acertos: number;
-    taxaAcerto: number;
+  desempenho: DesempenhoAgrupado & {
+    competencia?: string;
     mediaEstadual?: number;
   };
 }) {
   const pct = Math.round(desempenho.taxaAcerto * 100);
+  const rotulo = desempenho.competencia ?? desempenho.rotulo;
   const cor =
     desempenho.taxaAcerto >= 0.7
       ? "bg-success"
@@ -403,7 +423,7 @@ function BarraCompetencia({
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm">
         <span className="truncate font-mono text-xs text-foreground">
-          {desempenho.competencia}
+          {rotulo}
         </span>
         <span className="font-mono text-xs tabular-nums text-foreground">
           {desempenho.acertos}/{desempenho.totalQuestoes}{" "}
@@ -428,6 +448,36 @@ function BarraCompetencia({
         />
       </div>
     </div>
+  );
+}
+
+function BlocoDesempenho({
+  titulo,
+  icone: Icone,
+  itens,
+}: {
+  titulo: string;
+  icone: LucideIcon;
+  itens: DesempenhoAgrupado[];
+}) {
+  return (
+    <section className="mt-8">
+      <header className="mb-4 flex items-center gap-2">
+        <Icone className="size-4 text-primary-text" aria-hidden />
+        <h2
+          className="font-serif text-xl tracking-tight md:text-2xl"
+        >
+          {titulo}
+        </h2>
+      </header>
+      <ul className="space-y-3 rounded-xl border border-border bg-card p-5">
+        {itens.map((item) => (
+          <li key={item.rotulo}>
+            <BarraCompetencia desempenho={item} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

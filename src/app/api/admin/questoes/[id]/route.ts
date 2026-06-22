@@ -58,7 +58,7 @@ export async function PATCH(
     body = (await request.json()) as CorpoQuestao;
   } catch {
     return NextResponse.json(
-      { codigo: "CORPO_INVALIDO", mensagem: "Corpo invÃ¡lido." },
+      { codigo: "CORPO_INVALIDO", mensagem: "Corpo inválido." },
       { status: 400 },
     );
   }

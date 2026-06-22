@@ -34,3 +34,37 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
   }
 }
+
+export async function PATCH(request: Request): Promise<NextResponse> {
+  const token = tokenDaRequisicao(request);
+  if (!token) {
+    return NextResponse.json(
+      { codigo: "NAO_AUTENTICADO", mensagem: "Token ausente." },
+      { status: 401 },
+    );
+  }
+
+  let body: { lida?: boolean } = {};
+  try {
+    body = (await request.json()) as { lida?: boolean };
+  } catch {
+    body = {};
+  }
+
+  try {
+    const resp = await backendFetch<Record<string, unknown>>("/notificacoes", {
+      method: "PATCH",
+      token,
+      body: { lida: body.lida ?? true },
+    });
+    return NextResponse.json(resp);
+  } catch (erro) {
+    if (erro instanceof ErroBackend) {
+      return NextResponse.json(erro.corpo, { status: erro.status });
+    }
+    return NextResponse.json(
+      { codigo: "ERRO_DESCONHECIDO", mensagem: "Erro inesperado." },
+      { status: 500 },
+    );
+  }
+}

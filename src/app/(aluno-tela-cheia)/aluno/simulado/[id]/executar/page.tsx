@@ -7,6 +7,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  BookOpenText,
+  CaseSensitive,
+  Contrast,
   Eye,
   EyeOff,
   Flag,
@@ -35,6 +38,7 @@ import { useTimer } from "@/hooks/use-timer";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useConexaoOnline } from "@/hooks/use-conexao-online";
 import { useAtalhosTeclado } from "@/hooks/use-atalhos-teclado";
+import { useAcessibilidade } from "@/hooks/use-acessibilidade";
 import { atualizar, criar } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -49,6 +53,10 @@ export default function PaginaExecutarSimulado({
   const router = useRouter();
   const { data, isLoading, isError } = useSimuladoAluno(id);
   const { online } = useConexaoOnline();
+  const {
+    preferencias,
+    atualizar: atualizarAcessibilidade,
+  } = useAcessibilidade();
 
   const {
     simuladoAtual,
@@ -88,9 +96,34 @@ export default function PaginaExecutarSimulado({
 
   // cronômetro
   const duracaoSegundos = useMemo(
-    () => (data?.simulado.parametros.tempoLimiteMinutos ?? 60) * 60,
-    [data?.simulado.parametros.tempoLimiteMinutos],
+    () =>
+      data?.acessibilidade?.tempoTotalSegundos ??
+      (data?.simulado.parametros.tempoLimiteMinutos ?? 60) * 60,
+    [
+      data?.acessibilidade?.tempoTotalSegundos,
+      data?.simulado.parametros.tempoLimiteMinutos,
+    ],
   );
+
+  const recursosAcessibilidade = data?.acessibilidade?.recursos;
+  const temControlesAcessibilidade = Boolean(
+    recursosAcessibilidade?.fonteMaior ||
+      recursosAcessibilidade?.altoContraste ||
+      recursosAcessibilidade?.leituraSimplificada,
+  );
+  const tempoExtraMinutos = Math.round(
+    (data?.acessibilidade?.tempoExtraAplicado ?? 0) / 60,
+  );
+
+  const alternarTamanhoFonte = useCallback(() => {
+    const proximo =
+      preferencias.tamanhoFonte === "padrao"
+        ? "grande"
+        : preferencias.tamanhoFonte === "grande"
+          ? "extra-grande"
+          : "padrao";
+    atualizarAcessibilidade({ tamanhoFonte: proximo });
+  }, [atualizarAcessibilidade, preferencias.tamanhoFonte]);
 
   const aoAvisar = useCallback((segundos: number) => {
     if (segundos === 300) {
@@ -304,6 +337,66 @@ export default function PaginaExecutarSimulado({
           </div>
 
           <div className="flex items-center gap-3">
+            {tempoExtraMinutos > 0 && (
+              <span
+                className="hidden rounded-md border border-primary/20 bg-primary-muted px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary-text sm:inline-flex"
+                data-aux
+              >
+                +{tempoExtraMinutos} min
+              </span>
+            )}
+            {temControlesAcessibilidade && (
+              <div
+                className="hidden items-center gap-1 rounded-lg border border-border bg-card/80 p-1 shadow-sm lg:flex"
+                data-aux
+              >
+                {recursosAcessibilidade?.fonteMaior && (
+                  <Button
+                    variant={
+                      preferencias.tamanhoFonte !== "padrao" ? "secondary" : "ghost"
+                    }
+                    size="icon"
+                    className="size-8"
+                    onClick={alternarTamanhoFonte}
+                    aria-label="Alternar tamanho da fonte"
+                  >
+                    <CaseSensitive className="size-4" aria-hidden />
+                  </Button>
+                )}
+                {recursosAcessibilidade?.altoContraste && (
+                  <Button
+                    variant={preferencias.altoContraste ? "secondary" : "ghost"}
+                    size="icon"
+                    className="size-8"
+                    onClick={() =>
+                      atualizarAcessibilidade({
+                        altoContraste: !preferencias.altoContraste,
+                      })
+                    }
+                    aria-label="Alternar alto contraste"
+                    aria-pressed={preferencias.altoContraste}
+                  >
+                    <Contrast className="size-4" aria-hidden />
+                  </Button>
+                )}
+                {recursosAcessibilidade?.leituraSimplificada && (
+                  <Button
+                    variant={preferencias.fonteDislexia ? "secondary" : "ghost"}
+                    size="icon"
+                    className="size-8"
+                    onClick={() =>
+                      atualizarAcessibilidade({
+                        fonteDislexia: !preferencias.fonteDislexia,
+                      })
+                    }
+                    aria-label="Alternar fonte de leitura"
+                    aria-pressed={preferencias.fonteDislexia}
+                  >
+                    <BookOpenText className="size-4" aria-hidden />
+                  </Button>
+                )}
+              </div>
+            )}
             <CronometroSimulado
               segundosRestantes={segundosRestantes}
               duracaoTotalSegundos={duracaoSegundos}

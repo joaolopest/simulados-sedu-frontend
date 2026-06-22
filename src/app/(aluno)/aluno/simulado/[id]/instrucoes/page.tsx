@@ -46,6 +46,14 @@ const INSTRUCOES = [
   },
 ] as const;
 
+function formatarDuracao(segundos: number): string {
+  const minutos = Math.ceil(segundos / 60);
+  if (minutos >= 60) {
+    return `${Math.floor(minutos / 60)}h${minutos % 60 > 0 ? ` ${minutos % 60}min` : ""}`;
+  }
+  return `${minutos} min`;
+}
+
 export default function PaginaInstrucoesSimulado({
   params,
 }: {
@@ -95,11 +103,13 @@ export default function PaginaInstrucoesSimulado({
   }
 
   const { simulado } = data;
-  const tempoMin = simulado.parametros.tempoLimiteMinutos;
-  const tempoFormatado =
-    tempoMin >= 60
-      ? `${Math.floor(tempoMin / 60)}h${tempoMin % 60 > 0 ? ` ${tempoMin % 60}min` : ""}`
-      : `${tempoMin} min`;
+  const tempoTotalSegundos =
+    data.acessibilidade?.tempoTotalSegundos ??
+    simulado.parametros.tempoLimiteMinutos * 60;
+  const tempoExtraMinutos = Math.round(
+    (data.acessibilidade?.tempoExtraAplicado ?? 0) / 60,
+  );
+  const tempoFormatado = formatarDuracao(tempoTotalSegundos);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 md:px-6 md:py-16">
@@ -140,8 +150,25 @@ export default function PaginaInstrucoesSimulado({
             <dd className="mt-2 font-serif text-3xl tabular-nums">
               {tempoFormatado}
             </dd>
+            {tempoExtraMinutos > 0 && (
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-primary-text">
+                +{tempoExtraMinutos} min de adaptacao
+              </p>
+            )}
           </div>
         </dl>
+
+        {data.acessibilidade?.temAdaptacao && (
+          <div className="mt-5 rounded-lg border border-primary/20 bg-primary-muted/50 p-4">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-primary-text">
+              Recursos de acessibilidade liberados
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              O tempo ajustado e os recursos disponiveis serao aplicados durante
+              a execucao do simulado.
+            </p>
+          </div>
+        )}
 
         {/* instruções */}
         <h2 className="mt-10 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">

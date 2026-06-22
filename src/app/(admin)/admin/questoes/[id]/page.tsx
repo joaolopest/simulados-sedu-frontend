@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -79,6 +80,7 @@ const TOM_NIVEL: Record<NivelDificuldade, string> = {
 
 const TOM_STATUS: Record<StatusQuestao, string> = {
   rascunho: "bg-muted text-muted-foreground",
+  em_revisao: "bg-warning-muted text-warning",
   publicada: "bg-success-muted text-success",
   arquivada: "bg-destructive-muted text-destructive",
 };
@@ -86,6 +88,7 @@ const TOM_STATUS: Record<StatusQuestao, string> = {
 const MAX_ENUNCIADO = 2000;
 const MAX_ALTERNATIVAS = 5;
 const MIN_ALTERNATIVAS = 2;
+const URL_IMAGEM_VALIDA = /^(https?:\/\/|\/)/;
 
 export default function PaginaEditarQuestao({
   params,
@@ -218,6 +221,10 @@ export default function PaginaEditarQuestao({
   }
 
   function salvar(status: StatusQuestao) {
+    if (imagemUrl && !URL_IMAGEM_VALIDA.test(imagemUrl)) {
+      toast.error("Informe uma URL de imagem válida ou remova a imagem.");
+      return;
+    }
     atualizar.mutate(
       { id, dados: montarPayload(status) },
       {
@@ -726,14 +733,14 @@ function DropzoneImagem({
     multiple: false,
     onDrop: (aceitos) => {
       if (aceitos.length > 0) {
-        // Mock URL — em produção subiria pra storage
-        aoMudar(
-          "https://placehold.co/600x400/1E40AF/FFFFFF/png?text=Imagem",
+        toast.error(
+          "Upload de arquivo ainda precisa do Storage. Cole uma URL pública da imagem.",
         );
-        toast.success("Imagem anexada");
       }
     },
   });
+
+  const imagemPreviewValida = !!imagemUrl && URL_IMAGEM_VALIDA.test(imagemUrl);
 
   if (imagemUrl) {
     return (
@@ -741,14 +748,37 @@ function DropzoneImagem({
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           Imagem anexada
         </p>
-        <div className="mt-3 overflow-hidden rounded-lg border border-border">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imagemUrl}
-            alt="Pré-visualização da imagem da questão"
-            className="block h-auto max-h-80 w-full object-contain"
-          />
-        </div>
+        {imagemPreviewValida ? (
+          <div className="mt-3 overflow-hidden rounded-lg border border-border">
+            <div className="relative aspect-video max-h-80 w-full bg-muted">
+              <Image
+                src={imagemUrl}
+                alt="Pré-visualização da imagem da questão"
+                fill
+                sizes="(min-width: 768px) 720px, calc(100vw - 2rem)"
+                className="object-contain"
+                unoptimized
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-lg border border-warning/30 bg-warning-muted p-3 text-sm text-warning">
+            URL inválida. Use um link que comece com http://, https:// ou /.
+          </p>
+        )}
+        <Label
+          htmlFor="imagem-url-edicao"
+          className="mt-4 block font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+        >
+          URL da imagem
+        </Label>
+        <Input
+          id="imagem-url-edicao"
+          value={imagemUrl}
+          onChange={(e) => aoMudar(e.target.value.trim() || undefined)}
+          className="mt-2"
+          placeholder="https://exemplo.gov.br/imagem.png"
+        />
         <Button
           variant="outline"
           size="sm"
@@ -763,24 +793,39 @@ function DropzoneImagem({
   }
 
   return (
-    <section
-      {...getRootProps()}
-      className={cn(
-        "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed bg-card px-5 py-8 text-center transition-colors",
-        isDragActive
-          ? "border-primary bg-primary-muted"
-          : "border-border hover:border-primary/50",
-      )}
-      role="button"
-      aria-label="Adicionar imagem"
-      tabIndex={0}
-    >
-      <input {...getInputProps()} aria-label="Selecionar imagem" />
-      <ImagePlus className="size-6 text-muted-foreground" aria-hidden />
-      <p className="mt-2 text-sm">Adicionar imagem (opcional)</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        PNG, JPG ou WEBP · arraste ou clique
-      </p>
+    <section className="rounded-xl border border-border bg-card p-5">
+      <Label
+        htmlFor="imagem-url-edicao"
+        className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+      >
+        URL da imagem (opcional)
+      </Label>
+      <Input
+        id="imagem-url-edicao"
+        value=""
+        onChange={(e) => aoMudar(e.target.value.trim() || undefined)}
+        className="mt-2"
+        placeholder="https://exemplo.gov.br/imagem.png"
+      />
+      <div
+        {...getRootProps()}
+        className={cn(
+          "mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed bg-background px-5 py-8 text-center transition-colors",
+          isDragActive
+            ? "border-primary bg-primary-muted"
+            : "border-border hover:border-primary/50",
+        )}
+        role="button"
+        aria-label="Selecionar arquivo de imagem"
+        tabIndex={0}
+      >
+        <input {...getInputProps()} aria-label="Selecionar imagem" />
+        <ImagePlus className="size-6 text-muted-foreground" aria-hidden />
+        <p className="mt-2 text-sm">Upload de arquivo em breve</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Por enquanto, cole uma URL pública para persistir no banco.
+        </p>
+      </div>
     </section>
   );
 }

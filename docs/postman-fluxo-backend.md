@@ -12,6 +12,14 @@ Este guia testa o fluxo real da API:
 
 ## Ambiente Do Postman
 
+Opcao rapida: importe a collection local abaixo no Postman:
+
+```text
+postman/simulados-sedu-fluxo.postman_collection.json
+```
+
+Essa pasta esta no `.gitignore`; ela e so um auxilio local e nao precisa subir para o GitHub.
+
 Crie um Environment no Postman com estas variaveis:
 
 ```text
@@ -22,13 +30,21 @@ admin_senha=sedu123
 turma_id=1
 ```
 
-Para testar a producao na Vercel, troque apenas:
+Para testar o backend direto em producao, use:
 
 ```text
 base_url=https://simulados-sedu.vercel.app/_/backend
 ```
 
-O `/_/backend` esta correto: e o prefixo publico do FastAPI dentro do deploy Vercel.
+O `/_/backend` e o formato compativel com este guia, porque ele chama o FastAPI direto e usa os mesmos nomes de campos.
+
+Se o alias atual retornar 404 em `/_/backend`, significa que o FastAPI direto nao esta exposto nesse deploy. Nesse caso, a aplicacao ainda pode funcionar pelo BFF publico:
+
+```text
+base_url=https://simulados-sedu.vercel.app/api
+```
+
+Mas o BFF adapta alguns campos para o formato do frontend. Para o fluxo copiavel deste arquivo, prefira backend direto local (`http://127.0.0.1:8000`) ou exponha `/_/backend` na Vercel antes de usar producao.
 
 Em todas as requisicoes autenticadas, use:
 
@@ -477,6 +493,10 @@ Tests:
 ```js
 const json = pm.response.json();
 pm.environment.set("tentativa_id", json.tentativaId);
+pm.environment.set("tempo_restante", json.tempoRestanteSegundos);
+pm.test("tempo retornado pela API", () => {
+  pm.expect(json.tempoRestanteSegundos).to.be.a("number");
+});
 ```
 
 ## 12. Buscar Questoes Da Prova
@@ -500,6 +520,9 @@ const json = pm.response.json();
 pm.test("aluno recebeu 3 questoes sem gabarito", () => {
   pm.expect(json.questoes.length).to.eql(3);
   pm.expect(json.questoes[0].alternativas[0]).to.not.have.property("correta");
+});
+pm.test("contrato de acessibilidade presente", () => {
+  pm.expect(json.acessibilidade).to.have.property("tempoTotalSegundos");
 });
 ```
 

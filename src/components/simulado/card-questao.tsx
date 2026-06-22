@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Questao } from "@/types";
@@ -54,13 +55,15 @@ export function CardQuestao({
       </h2>
 
       {questao.imagemUrl && (
-        <figure className="mt-5 overflow-hidden rounded-lg border border-border bg-muted">
-          {/* placeholder image — usar next/image quando tiver assets reais */}
-          <img
+        <figure className="relative mt-5 aspect-video overflow-hidden rounded-lg border border-border bg-muted">
+          <Image
             src={questao.imagemUrl}
             alt={`Imagem da questão ${numero}`}
-            className="block h-auto w-full"
+            fill
+            sizes="(min-width: 768px) 720px, calc(100vw - 2rem)"
+            className="object-contain"
             loading="lazy"
+            unoptimized
           />
         </figure>
       )}

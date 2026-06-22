@@ -72,17 +72,42 @@ def montar_questoes_snapshot(simulado: Simulado) -> list[dict]:
     ]
 
 
-def validar_simulado(simulado: Simulado) -> dict:
+def validar_simulado(
+    simulado: Simulado,
+    *,
+    quantidade_minima_questoes: int = 1,
+    quantidade_maxima_questoes: int | None = None,
+) -> dict:
     bloqueios: list[dict] = []
     avisos: list[dict] = []
     vistos: set[int] = set()
     questoes = sorted(simulado.questoes, key=lambda sq: sq.ordem_questao)
+    minimo = max(1, int(quantidade_minima_questoes or 1))
+    maximo = int(quantidade_maxima_questoes or 0)
 
     if not questoes:
         bloqueios.append(
             {
                 "codigo": "SEM_QUESTOES",
                 "mensagem": "A prova precisa ter pelo menos uma questao.",
+            }
+        )
+    elif len(questoes) < minimo:
+        bloqueios.append(
+            {
+                "codigo": "QUESTOES_ABAIXO_DO_MINIMO",
+                "mensagem": f"A prova precisa ter pelo menos {minimo} questoes.",
+                "totalAtual": len(questoes),
+                "minimo": minimo,
+            }
+        )
+    if maximo > 0 and len(questoes) > maximo:
+        bloqueios.append(
+            {
+                "codigo": "QUESTOES_ACIMA_DO_MAXIMO",
+                "mensagem": f"A prova nao pode ter mais de {maximo} questoes.",
+                "totalAtual": len(questoes),
+                "maximo": maximo,
             }
         )
 
@@ -284,7 +309,7 @@ def resultado_persistido(
             ResultadoSimulado.simulado_id == simulado_id,
             ResultadoSimulado.aluno_id == aluno_id,
         )
-        .order_by(ResultadoSimulado.criado_em.desc())
+        .order_by(ResultadoSimulado.criado_em.desc(), ResultadoSimulado.id.desc())
         .limit(1)
     )
 

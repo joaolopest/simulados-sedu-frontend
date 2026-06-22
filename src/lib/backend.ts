@@ -1,4 +1,4 @@
-// Cliente server-side único para as rotas Next.js (BFF) falarem com o backend
+﻿// Cliente server-side único para as rotas Next.js (BFF) falarem com o backend
 // Python (FastAPI). Roda SÓ no servidor (route handlers) — nunca no browser.
 //
 // O frontend continua chamando "/api/..." (rotas Next) via axios; essas rotas,
@@ -147,4 +147,49 @@ export async function backendFetch<T>(
     throw new ErroBackend(resposta.status, normalizarErro(resposta.status, dados));
   }
   return dados as T;
+}
+
+export async function backendFetchRaw(
+  path: string,
+  opcoes: OpcoesBackend = {},
+): Promise<Response> {
+  const { method = "GET", body, token, query } = opcoes;
+  const url = `${BASE}${path}${montarQuery(query)}`;
+
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let resposta: Response;
+  try {
+    resposta = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    throw new ErroBackend(503, {
+      codigo: "ERRO_REDE",
+      mensagem: "Não foi possível conectar ao servidor da API.",
+    });
+  }
+
+  if (!resposta.ok) {
+    const texto = await resposta.text();
+    let dados: unknown = null;
+    if (texto) {
+      try {
+        dados = JSON.parse(texto);
+      } catch {
+        dados = texto;
+      }
+    }
+    throw new ErroBackend(
+      resposta.status,
+      normalizarErro(resposta.status, dados),
+    );
+  }
+
+  return resposta;
 }

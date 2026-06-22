@@ -45,6 +45,37 @@ from app.enums import (
 
 
 # ============================================================================
+# CONFIGURAÇÕES
+# ============================================================================
+
+
+class ConfiguracaoSistema(Base):
+    """Configuração global versionável por chave.
+
+    O valor fica em JSON para manter regras de negócio evolutivas sem criar uma
+    migração para cada parâmetro operacional.
+    """
+
+    __tablename__ = "configuracoes_sistema"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chave: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    valor_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    atualizado_por_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True,
+    )
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    atualizado_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    atualizado_por: Mapped[Optional["Usuario"]] = relationship()
+
+
+# ============================================================================
 # ETIQUETAS
 # ============================================================================
 
@@ -160,6 +191,11 @@ class Questao(Base):
         cascade="all, delete-orphan",
         order_by="Alternativa.ordem_original",
     )
+    versoes: Mapped[List["QuestaoVersao"]] = relationship(
+        back_populates="questao",
+        cascade="all, delete-orphan",
+        order_by="QuestaoVersao.versao.desc()",
+    )
 
 
 class Alternativa(Base):
@@ -174,6 +210,31 @@ class Alternativa(Base):
     ordem_original: Mapped[int] = mapped_column(Integer, nullable=False)
 
     questao: Mapped["Questao"] = relationship(back_populates="alternativas")
+
+
+class QuestaoVersao(Base):
+    """Snapshot auditável de cada versão salva de uma questão."""
+
+    __tablename__ = "questao_versoes"
+    __table_args__ = (
+        UniqueConstraint("questao_id", "versao", name="uq_questao_versao"),
+        Index("ix_questao_versoes_questao", "questao_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    questao_id: Mapped[int] = mapped_column(
+        ForeignKey("questoes.id", ondelete="CASCADE"), nullable=False,
+    )
+    versao: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    criado_por_id: Mapped[Optional[int]] = mapped_column(ForeignKey("usuarios.id"), nullable=True)
+    motivo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+    questao: Mapped["Questao"] = relationship(back_populates="versoes")
+    criado_por: Mapped[Optional["Usuario"]] = relationship()
 
 
 # ============================================================================
@@ -1001,6 +1062,7 @@ class RevisaoQuestao(Base):
     escola_id: Mapped[Optional[int]] = mapped_column(ForeignKey("escolas.id"), nullable=True)
     tipo: Mapped[str] = mapped_column(String(20), nullable=False)
     motivo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proposta_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pendente", nullable=False)
     resposta: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     resolvido_por_id: Mapped[Optional[int]] = mapped_column(
