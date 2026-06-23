@@ -342,6 +342,34 @@ def _aplicar_defaults_parametros_prova(sessao: Session, parametros: dict) -> dic
     return saida
 
 
+def _validar_parametros_quantidade_prova(sessao: Session, parametros: dict) -> None:
+    minimo, maximo = _limites_prova(sessao)
+    valor_quantidade = parametros.get("quantidadeQuestoes", parametros.get("quantidade"))
+    if valor_quantidade is None:
+        return
+    quantidade = _inteiro_positivo(valor_quantidade, 0)
+    if quantidade < minimo:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "codigo": "QUESTOES_ABAIXO_DO_MINIMO",
+                "mensagem": f"A prova precisa ter pelo menos {minimo} questoes.",
+                "totalAtual": quantidade,
+                "minimo": minimo,
+            },
+        )
+    if quantidade > maximo:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "codigo": "QUESTOES_ACIMA_DO_MAXIMO",
+                "mensagem": f"A prova nao pode ter mais de {maximo} questoes.",
+                "totalAtual": quantidade,
+                "maximo": maximo,
+            },
+        )
+
+
 def _validar_simulado_com_config(sessao: Session, simulado: Simulado) -> dict:
     minimo, maximo = _limites_prova(sessao)
     return prova_avancada_service.validar_simulado(
@@ -701,6 +729,16 @@ def _serializar_questao_para_aluno(questao: Questao, *, incluir_gabarito: bool =
     return dados
 
 
+def _config_resultados(sessao: Session) -> dict:
+    return configuracao_service.obter_valor(sessao, "resultados")
+
+
+def _resultado_sem_gabarito(resultado: dict) -> dict:
+    dados = dict(resultado or {})
+    dados["questoesResumo"] = []
+    return dados
+
+
 def _aluno_do_usuario(usuario: Usuario) -> Aluno:
     if usuario.aluno is None:
         raise HTTPException(status_code=403, detail="Usuário não é um aluno.")
@@ -1036,7 +1074,10 @@ def aluno_home(
                 proximo = _serializar_simulado(s)
                 break
 
-    resultados = _resultados_do_aluno(sessao, aluno)
+    mostrar_resultado = bool(
+        _config_resultados(sessao).get("mostrarResultadoImediato", True)
+    )
+    resultados = _resultados_do_aluno(sessao, aluno) if mostrar_resultado else []
     evolucao = [
         {"simuladoId": r["simuladoId"], "nota": r["notaFinal"], "data": r["finalizadoEm"]}
         for r in sorted(resultados, key=lambda x: x["finalizadoEm"] or "")[-6:]
@@ -1055,6 +1096,8 @@ def aluno_historico(
     sessao: Session = Depends(get_session),
 ) -> dict:
     aluno = _aluno_do_usuario(usuario)
+    if not bool(_config_resultados(sessao).get("mostrarResultadoImediato", True)):
+        return {"dados": []}
     resultados = _resultados_do_aluno(sessao, aluno)
     dados = []
     for r in resultados:
@@ -1124,22 +1167,39 @@ def aluno_resultado(
     _exigir_acesso_aluno_simulado_v2(
         sessao, aluno, s, exigir_liberado=False, permitir_finalizado=True
     )
+    config_resultados = _config_resultados(sessao)
+    mostrar_resultado = bool(config_resultados.get("mostrarResultadoImediato", True))
+    mostrar_gabarito = bool(config_resultados.get("mostrarGabaritoAoAluno", True))
+    if not mostrar_resultado:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "codigo": "RESULTADO_NAO_LIBERADO",
+                "mensagem": "O resultado ainda nao foi liberado para o aluno.",
+            },
+        )
     resultado = _computar_resultado(sessao, aluno.id, s)
     if resultado is None:
         raise HTTPException(status_code=404, detail="Resultado não disponível.")
-    tentativas = [
-        _serializar_resultado_persistido(r)
-        for r in sessao.scalars(
-            select(ResultadoSimulado)
-            .where(
-                ResultadoSimulado.aluno_id == aluno.id,
-                ResultadoSimulado.simulado_id == s.id,
-            )
-            .order_by(ResultadoSimulado.criado_em.desc(), ResultadoSimulado.id.desc())
-        ).all()
-    ]
+    tentativas = []
+    for r in sessao.scalars(
+        select(ResultadoSimulado)
+        .where(
+            ResultadoSimulado.aluno_id == aluno.id,
+            ResultadoSimulado.simulado_id == s.id,
+        )
+        .order_by(ResultadoSimulado.criado_em.desc(), ResultadoSimulado.id.desc())
+    ).all():
+        tentativa_serializada = _serializar_resultado_persistido(r)
+        tentativas.append(
+            tentativa_serializada
+            if mostrar_gabarito
+            else _resultado_sem_gabarito(tentativa_serializada)
+        )
+    if not mostrar_gabarito:
+        resultado = _resultado_sem_gabarito(resultado)
     questoes = [
-        _serializar_questao_para_aluno(sq.questao, incluir_gabarito=True)
+        _serializar_questao_para_aluno(sq.questao, incluir_gabarito=mostrar_gabarito)
         for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
         if sq.questao
     ]
@@ -1148,6 +1208,10 @@ def aluno_resultado(
         "resultado": resultado,
         "tentativas": tentativas,
         "questoes": questoes,
+        "permissoes": {
+            "mostrarResultado": mostrar_resultado,
+            "mostrarGabarito": mostrar_gabarito,
+        },
         "diagnostico": None,  # diagnóstico de IA não tem origem no banco
         "mensagem": None,
         "sugestoes": [],
@@ -1776,6 +1840,7 @@ def criar_simulado_rascunho(
 ) -> dict:
     """Cria um simulado em rascunho a partir do ParametrosSimulado do front."""
     parametros = _aplicar_defaults_parametros_prova(sessao, parametros)
+    _validar_parametros_quantidade_prova(sessao, parametros)
     turma_id = parametros.get("turmaId")
     try:
         turma_id = int(turma_id) if turma_id is not None else None
@@ -1817,13 +1882,15 @@ def _selecionar_questoes_por_parametros(
     *,
     usuario: Usuario,
     parametros: dict,
+    respeitar_minimo: bool = True,
 ) -> tuple[list[Questao], list[str]]:
     minimo, maximo = _limites_prova(sessao)
     quantidade = _inteiro_positivo(
         parametros.get("quantidadeQuestoes", parametros.get("quantidade")),
         10,
     )
-    quantidade = max(minimo, min(quantidade, maximo))
+    quantidade = min(quantidade, maximo)
+    quantidade = max(minimo if respeitar_minimo else 1, quantidade)
     avisos: list[str] = []
     q = (
         sessao.query(Questao)
@@ -1929,6 +1996,7 @@ def gerar_simulado_automaticamente(
     sessao: Session = Depends(get_session),
 ) -> dict:
     parametros = _aplicar_defaults_parametros_prova(sessao, parametros)
+    _validar_parametros_quantidade_prova(sessao, parametros)
     turma_id_raw = parametros.get("turmaId")
     try:
         turma_id = int(turma_id_raw) if turma_id_raw is not None else None
@@ -1938,10 +2006,29 @@ def gerar_simulado_automaticamente(
     questoes, avisos = _selecionar_questoes_por_parametros(
         sessao, usuario=usuario, parametros=parametros,
     )
+    quantidade_solicitada = _inteiro_positivo(
+        parametros.get("quantidadeQuestoes", parametros.get("quantidade")),
+        10,
+    )
+    minimo, maximo = _limites_prova(sessao)
+    quantidade_solicitada = max(minimo, min(quantidade_solicitada, maximo))
     if not questoes:
         raise HTTPException(
             status_code=422,
             detail="Nenhuma questao publicada encontrada para os filtros informados.",
+        )
+    if len(questoes) < quantidade_solicitada:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "codigo": "BANCO_INSUFICIENTE",
+                "mensagem": (
+                    f"O banco retornou {len(questoes)} de "
+                    f"{quantidade_solicitada} questoes solicitadas."
+                ),
+                "totalAtual": len(questoes),
+                "minimo": quantidade_solicitada,
+            },
         )
     sim = Simulado(
         gestor_id=usuario.id,
@@ -1967,6 +2054,31 @@ def gerar_simulado_automaticamente(
     sessao.refresh(sim)
     return {
         "simulado": _serializar_simulado(sim),
+        "questoesSelecionadas": [_serializar_questao(q) for q in questoes],
+        "questaoIds": [str(q.id) for q in questoes],
+        "avisos": avisos,
+    }
+
+
+@router.post("/gestor/questoes/sugerir", dependencies=[Depends(montadores_prova)])
+def sugerir_questoes_prova(
+    parametros: dict,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    parametros = _aplicar_defaults_parametros_prova(sessao, parametros)
+    questoes, avisos = _selecionar_questoes_por_parametros(
+        sessao,
+        usuario=usuario,
+        parametros=parametros,
+        respeitar_minimo=False,
+    )
+    if not questoes:
+        raise HTTPException(
+            status_code=422,
+            detail="Nenhuma questao publicada encontrada para os filtros informados.",
+        )
+    return {
         "questoesSelecionadas": [_serializar_questao(q) for q in questoes],
         "questaoIds": [str(q.id) for q in questoes],
         "avisos": avisos,
@@ -2244,6 +2356,7 @@ def atualizar_simulado(
 
     atuais = sim.parametros_json or {}
     novos_parametros = {**atuais, **parametros}
+    _validar_parametros_quantidade_prova(sessao, novos_parametros)
     sim.parametros_json = novos_parametros
     sim.turma_id = turma_id
     sim.titulo = novos_parametros.get("nome") or sim.titulo
@@ -2356,10 +2469,13 @@ def curar_simulado(
         except (TypeError, ValueError):
             turma_id = None
         _exigir_turma_permitida(sessao, usuario, turma_id)
+        _validar_parametros_quantidade_prova(sessao, {**(sim.parametros_json or {}), **p})
         sim.turma_id = turma_id
         sim.parametros_json = {**(sim.parametros_json or {}), **p}
         sim.titulo = sim.parametros_json.get("nome") or sim.titulo
-    total = int(p.get("quantidadeQuestoes", 10) or 10)
+    minimo, maximo = _limites_prova(sessao)
+    total = _inteiro_positivo(p.get("quantidadeQuestoes", 10), 10)
+    total = max(minimo, min(total, maximo))
     alvo = p.get("distribuicao", {}) or {}
 
     q = (
@@ -2396,11 +2512,25 @@ def curar_simulado(
             : total - len(selecionadas)
         ]
 
+    if len(selecionadas) < total:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "codigo": "BANCO_INSUFICIENTE",
+                "mensagem": (
+                    f"O banco retornou {len(selecionadas)} de "
+                    f"{total} questoes solicitadas."
+                ),
+                "totalAtual": len(selecionadas),
+                "minimo": total,
+            },
+        )
+
     # persiste as questões do simulado
     sessao.query(SimuladoQuestao).filter(
         SimuladoQuestao.simulado_id == sim.id
     ).delete()
-    for ordem, qq in enumerate(selecionadas):
+    for ordem, qq in enumerate(selecionadas, start=1):
         sessao.add(
             SimuladoQuestao(
                 simulado_id=sim.id,
@@ -2489,6 +2619,9 @@ def montar_prova(
         raise HTTPException(
             status_code=422, detail="Informe ao menos uma questão válida (questaoIds)."
         )
+    _validar_parametros_quantidade_prova(
+        sessao, {"quantidadeQuestoes": len(questoes_ok)}
+    )
 
     sessao.query(SimuladoQuestao).filter(
         SimuladoQuestao.simulado_id == sim.id
@@ -3266,6 +3399,7 @@ def aluno_finalizar(
         select(Resposta).where(
             Resposta.aluno_id == aluno.id,
             Resposta.simulado_id == sim.id,
+            Resposta.tentativa_id == tentativa.id,
         )
     ).all()
     tempo_total = sum(int(r.tempo_gasto_segundos or 0) for r in respostas_atuais)
@@ -3291,19 +3425,38 @@ def aluno_finalizar(
         tentativa_atual=tentativa,
     )
     prova_avancada_service.salvar_resultado(sessao, tentativa=tentativa, resultado=resultado or {})
-    prova_avancada_service.notificar(
-        sessao,
-        destinatarios=[usuario],
-        tipo="resultado_disponivel",
-        titulo="Resultado disponivel",
-        mensagem=f"O resultado da prova {sim.titulo} ja esta disponivel.",
-        origem_id=str(sim.id),
-        origem_tipo="simulado",
-        acao_url=f"/aluno/simulado/{sim.id}/resultado",
-        acao_label="Ver resultado",
-    )
+    config_resultados = _config_resultados(sessao)
+    mostrar_resultado = bool(config_resultados.get("mostrarResultadoImediato", True))
+    mostrar_gabarito = bool(config_resultados.get("mostrarGabaritoAoAluno", True))
+    if mostrar_resultado:
+        prova_avancada_service.notificar(
+            sessao,
+            destinatarios=[usuario],
+            tipo="resultado_disponivel",
+            titulo="Resultado disponivel",
+            mensagem=f"O resultado da prova {sim.titulo} ja esta disponivel.",
+            origem_id=str(sim.id),
+            origem_tipo="simulado",
+            acao_url=f"/aluno/simulado/{sim.id}/resultado",
+            acao_label="Ver resultado",
+        )
     sessao.commit()
-    return resultado
+    if not mostrar_resultado:
+        return {
+            "ok": True,
+            "resultadoDisponivel": False,
+            "mensagem": "Respostas enviadas. O resultado ainda nao foi liberado para o aluno.",
+        }
+    if not mostrar_gabarito:
+        resultado = _resultado_sem_gabarito(resultado or {})
+    return {
+        **(resultado or {}),
+        "resultadoDisponivel": True,
+        "permissoes": {
+            "mostrarResultado": mostrar_resultado,
+            "mostrarGabarito": mostrar_gabarito,
+        },
+    }
 
 # ---------------------------------------------------------------------------
 # SUPORTE — nota e pedido de apoio presencial (persistem no aluno)

@@ -36,6 +36,7 @@ import {
   type RespostaCuradoria,
   type TurmaEnriquecida,
 } from "@/hooks/api/use-gestor";
+import { useAdminConfiguracoes } from "@/hooks/api/use-admin";
 import {
   Form,
   FormControl,
@@ -104,8 +105,6 @@ const PASSOS: { numero: NumeroPasso; rotulo: string }[] = [
   { numero: 4, rotulo: "Liberar" },
 ];
 
-const TEMPOS_DISPONIVEIS = [30, 60, 90, 120] as const;
-
 const ADAPTACOES_DISPONIVEIS: AdaptacaoCognitiva[] = [
   "tdah",
   "dislexia",
@@ -153,9 +152,8 @@ const schemaPasso1 = z.object({
   tempoLimiteMinutos: z
     .number()
     .int()
-    .refine((v) => TEMPOS_DISPONIVEIS.includes(v as 30 | 60 | 90 | 120), {
-      message: "Selecione um tempo válido",
-    }),
+    .min(1, "Tempo precisa ser maior que zero")
+    .max(480, "Tempo máximo permitido: 480 minutos"),
 });
 
 type ValoresPasso1 = z.infer<typeof schemaPasso1>;
@@ -165,7 +163,7 @@ const schemaPasso2 = z.object({
   conteudos: z
     .array(z.string().min(1))
     .min(1, "Adicione pelo menos um conteúdo a cobrar"),
-  quantidadeQuestoes: z.number().int().min(5).max(50),
+  quantidadeQuestoes: z.number().int().min(1).max(200),
   distribuicao: z.object({
     facil: z.number().int().min(0).max(100),
     medio: z.number().int().min(0).max(100),
@@ -214,10 +212,29 @@ export default function PaginaNovoSimulado() {
 
   // Hooks API
   const { data: turmas = [], isLoading: turmasCarregando } = useGestorTurmas();
+  const { data: configuracoes = [] } = useAdminConfiguracoes();
   const { data: dadosEdicao } = useGestorSimulado(idEdicao ?? undefined);
   const mutationCriarRascunho = useCriarSimuladoRascunho();
   const mutationCurar = useCurarSimulado();
   const mutationLiberar = useLiberarSimulado();
+
+  const configProvas = useMemo(() => {
+    const valor =
+      configuracoes.find((item) => item.chave === "provas")?.valor ?? {};
+    const tempo = Number(valor.tempoPadraoMinutos ?? 60);
+    const minimo = Number(valor.quantidadeMinimaQuestoes ?? 5);
+    const maximo = Number(valor.quantidadeMaximaQuestoes ?? 100);
+    const quantidadeMinimaQuestoes = Number.isFinite(minimo)
+      ? Math.max(1, minimo)
+      : 5;
+    return {
+      tempoPadraoMinutos: Number.isFinite(tempo) ? Math.max(1, tempo) : 60,
+      quantidadeMinimaQuestoes,
+      quantidadeMaximaQuestoes: Number.isFinite(maximo)
+        ? Math.max(quantidadeMinimaQuestoes, maximo)
+        : 100,
+    };
+  }, [configuracoes]);
 
   // Builds o ParametrosSimulado consolidado
   const parametrosFinais: ParametrosSimulado | null = useMemo(() => {
@@ -245,11 +262,7 @@ export default function PaginaNovoSimulado() {
     if (!dadosEdicao?.simulado || simuladoId) return;
     const simulado = dadosEdicao.simulado;
     const parametros = simulado.parametros;
-    const tempo = TEMPOS_DISPONIVEIS.includes(
-      parametros.tempoLimiteMinutos as 30 | 60 | 90 | 120,
-    )
-      ? parametros.tempoLimiteMinutos
-      : 60;
+    const tempo = Number(parametros.tempoLimiteMinutos);
     const idTimeout = window.setTimeout(() => {
       setSimuladoId(simulado.id);
       setValoresPasso1({
@@ -260,7 +273,9 @@ export default function PaginaNovoSimulado() {
         dataLiberacao:
           parametros.liberadoEm?.slice(0, 10) ||
           new Date().toISOString().slice(0, 10),
-        tempoLimiteMinutos: tempo,
+        tempoLimiteMinutos: Number.isFinite(tempo)
+          ? Math.max(1, tempo)
+          : configProvas.tempoPadraoMinutos,
       });
       setValoresPasso2({
         conteudos: parametros.conteudos,
@@ -270,7 +285,7 @@ export default function PaginaNovoSimulado() {
       });
     }, 0);
     return () => window.clearTimeout(idTimeout);
-  }, [dadosEdicao?.simulado, simuladoId]);
+  }, [configProvas.tempoPadraoMinutos, dadosEdicao?.simulado, simuladoId]);
 
   const podeAvancar = useMemo(() => {
     if (passoAtual === 3) return Boolean(respostaCuradoria) || seguirSemCuradoria;
@@ -294,6 +309,18 @@ export default function PaginaNovoSimulado() {
   }
 
   async function aoSubmeterPasso2(valores: ValoresPasso2) {
+    if (valores.quantidadeQuestoes < configProvas.quantidadeMinimaQuestoes) {
+      toast.error(
+        `A prova precisa ter pelo menos ${configProvas.quantidadeMinimaQuestoes} questões.`,
+      );
+      return;
+    }
+    if (valores.quantidadeQuestoes > configProvas.quantidadeMaximaQuestoes) {
+      toast.error(
+        `A prova pode ter no máximo ${configProvas.quantidadeMaximaQuestoes} questões.`,
+      );
+      return;
+    }
     const total =
       valores.distribuicao.facil +
       valores.distribuicao.medio +
@@ -402,6 +429,7 @@ export default function PaginaNovoSimulado() {
               valorInicial={valoresPasso1}
               turmas={turmas}
               turmasCarregando={turmasCarregando}
+              tempoPadraoMinutos={configProvas.tempoPadraoMinutos}
               aoSubmeter={aoSubmeterPasso1}
             />
           )}
@@ -409,6 +437,8 @@ export default function PaginaNovoSimulado() {
           {passoAtual === 2 && (
             <Passo2Conteudo
               valorInicial={valoresPasso2}
+              quantidadeMinima={configProvas.quantidadeMinimaQuestoes}
+              quantidadeMaxima={configProvas.quantidadeMaximaQuestoes}
               aoSubmeter={aoSubmeterPasso2}
             />
           )}
@@ -659,6 +689,7 @@ interface Passo1Props {
   valorInicial: ValoresPasso1 | null;
   turmas: TurmaEnriquecida[];
   turmasCarregando: boolean;
+  tempoPadraoMinutos: number;
   aoSubmeter: (valores: ValoresPasso1) => void;
 }
 
@@ -666,6 +697,7 @@ function Passo1Parametros({
   valorInicial,
   turmas,
   turmasCarregando,
+  tempoPadraoMinutos,
   aoSubmeter,
 }: Passo1Props) {
   const form = useForm({
@@ -676,10 +708,17 @@ function Passo1Parametros({
       serie: "" as SerieEscolar,
       materias: [] as Materia[],
       dataLiberacao: "",
-      tempoLimiteMinutos: 60,
+      tempoLimiteMinutos: tempoPadraoMinutos,
     },
     mode: "onBlur",
   });
+
+  useEffect(() => {
+    if (valorInicial) return;
+    form.setValue("tempoLimiteMinutos", tempoPadraoMinutos, {
+      shouldValidate: true,
+    });
+  }, [form, tempoPadraoMinutos, valorInicial]);
 
   // Auto-preenche série quando turma é escolhida (ainda permite override)
   const turmaIdSelecionada = useWatch({
@@ -880,34 +919,20 @@ function Passo1Parametros({
               <FormItem>
                 <FormLabel>Tempo limite</FormLabel>
                 <FormControl>
-                  <div className="flex flex-wrap gap-2">
-                    {TEMPOS_DISPONIVEIS.map((t) => {
-                      const ativo = field.value === t;
-                      return (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => field.onChange(t)}
-                          aria-pressed={ativo}
-                          className={cn(
-                            "inline-flex h-10 items-center gap-2 rounded-full border px-5 font-mono text-sm font-medium tabular-nums",
-                            "transition-all duration-200 [transition-timing-function:var(--ease-quart)]",
-                            "hover:border-primary/40",
-                            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                            ativo
-                              ? "border-primary bg-primary-muted text-primary-text shadow-[0_0_0_3px_var(--primary-muted)]"
-                              : "border-border bg-card text-muted-foreground",
-                          )}
-                        >
-                          {t}
-                          <span className="text-[10px] uppercase tracking-wider opacity-70">
-                            min
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={480}
+                    value={field.value}
+                    onChange={(evento) =>
+                      field.onChange(Number(evento.target.value) || 1)
+                    }
+                    className="md:max-w-xs"
+                  />
                 </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  Padrão atual das configurações globais: {tempoPadraoMinutos} min.
+                </p>
                 <FormMessage />
               </FormItem>
             )}
@@ -924,20 +949,37 @@ function Passo1Parametros({
 
 interface Passo2Props {
   valorInicial: ValoresPasso2 | null;
+  quantidadeMinima: number;
+  quantidadeMaxima: number;
   aoSubmeter: (valores: ValoresPasso2) => void;
 }
 
-function Passo2Conteudo({ valorInicial, aoSubmeter }: Passo2Props) {
+function Passo2Conteudo({
+  valorInicial,
+  quantidadeMinima,
+  quantidadeMaxima,
+  aoSubmeter,
+}: Passo2Props) {
   const form = useForm({
     resolver: zodResolver(schemaPasso2),
     defaultValues: valorInicial ?? {
       conteudos: [] as string[],
-      quantidadeQuestoes: 20,
+      quantidadeQuestoes: Math.max(quantidadeMinima, 20),
       distribuicao: { facil: 30, medio: 50, dificil: 20 },
       adaptacoesAceitas: [] as AdaptacaoCognitiva[],
     },
     mode: "onBlur",
   });
+
+  useEffect(() => {
+    if (valorInicial) return;
+    const atual = Number(form.getValues("quantidadeQuestoes") || 0);
+    const ajustado = Math.min(
+      quantidadeMaxima,
+      Math.max(quantidadeMinima, atual || quantidadeMinima),
+    );
+    form.setValue("quantidadeQuestoes", ajustado, { shouldValidate: true });
+  }, [form, quantidadeMaxima, quantidadeMinima, valorInicial]);
 
   const conteudos =
     useWatch({ control: form.control, name: "conteudos" }) ?? [];
@@ -1056,7 +1098,7 @@ function Passo2Conteudo({ valorInicial, aoSubmeter }: Passo2Props) {
                 Quantidade de questões
               </label>
               <p className="text-xs text-muted-foreground">
-                Entre 5 e 50. Ajuste conforme tempo limite.
+                Entre {quantidadeMinima} e {quantidadeMaxima}. Ajuste conforme tempo limite.
               </p>
             </div>
             <span
@@ -1068,19 +1110,19 @@ function Passo2Conteudo({ valorInicial, aoSubmeter }: Passo2Props) {
           </div>
           <Slider
             value={[quantidade]}
-            min={5}
-            max={50}
+            min={quantidadeMinima}
+            max={quantidadeMaxima}
             step={1}
             onValueChange={(v) =>
-              form.setValue("quantidadeQuestoes", v[0] ?? 20, {
+              form.setValue("quantidadeQuestoes", v[0] ?? quantidadeMinima, {
                 shouldValidate: true,
               })
             }
             aria-label="Quantidade de questões"
           />
           <div className="flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            <span>5</span>
-            <span>50</span>
+            <span>{quantidadeMinima}</span>
+            <span>{quantidadeMaxima}</span>
           </div>
         </div>
 

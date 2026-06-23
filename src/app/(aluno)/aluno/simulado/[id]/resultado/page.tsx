@@ -105,7 +105,8 @@ export default function PaginaResultadoSimulado({
     );
   }
 
-  const { simulado, resultado, questoes, mensagem, sugestoes } = data;
+  const { simulado, resultado, questoes, mensagem, sugestoes, permissoes } = data;
+  const podeMostrarRevisao = permissoes?.mostrarGabarito !== false;
 
   const corNota =
     resultado.notaFinal >= 7
@@ -263,16 +264,22 @@ export default function PaginaResultadoSimulado({
             Revisão das questões
           </h2>
         </header>
-        <Accordion type="multiple" className="space-y-2">
-          {questoes.map((q, i) => (
-            <ItemRevisaoQuestao
-              key={q.id}
-              questao={q}
-              numero={i + 1}
-              resposta={respostasPorQuestao[q.id]}
-            />
-          ))}
-        </Accordion>
+        {podeMostrarRevisao ? (
+          <Accordion type="multiple" className="space-y-2">
+            {questoes.map((q, i) => (
+              <ItemRevisaoQuestao
+                key={q.id}
+                questao={q}
+                numero={i + 1}
+                resposta={respostasPorQuestao[q.id]}
+              />
+            ))}
+          </Accordion>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+            O gabarito e a revisão das questões ainda não foram liberados.
+          </div>
+        )}
       </section>
 
       <footer className="mt-16 flex justify-center">

@@ -16,6 +16,10 @@ export interface RespostaResultadoAluno {
   resultado: ResultadoSimulado;
   tentativas?: ResultadoSimulado[];
   questoes: Questao[];
+  permissoes?: {
+    mostrarResultado?: boolean;
+    mostrarGabarito?: boolean;
+  };
   diagnostico: DiagnosticoSimulado | null;
   mensagem: MensagemResultadoIA | null;
   sugestoes: SugestaoReforco[];

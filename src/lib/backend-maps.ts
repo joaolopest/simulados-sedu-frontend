@@ -148,7 +148,7 @@ export const nivelParaNome = (cod: string): string => NIVEL_COD_NOME[cod] ?? cod
 interface AlternativaBackend {
   id: number;
   texto: string;
-  correta: boolean;
+  correta?: boolean;
   ordem_original: number;
 }
 
@@ -186,7 +186,7 @@ export function mapQuestao(py: QuestaoBackend): Questao {
     alternativas: (py.alternativas ?? []).map((a) => ({
       id: String(a.id),
       texto: a.texto,
-      correta: a.correta,
+      correta: Boolean(a.correta),
       ordem: a.ordem_original,
     })),
     adaptacoes: py.adaptacoes ?? [],

@@ -6,6 +6,10 @@ interface RespostaBackend {
   simulado: unknown;
   resultado: unknown;
   questoes: QuestaoBackend[];
+  permissoes?: {
+    mostrarResultado?: boolean;
+    mostrarGabarito?: boolean;
+  };
   diagnostico: unknown;
   mensagem: unknown;
   sugestoes: unknown[];
@@ -26,6 +30,7 @@ export async function GET(
       simulado: resp.simulado,
       resultado: resp.resultado,
       questoes: (resp.questoes ?? []).map(mapQuestao),
+      permissoes: resp.permissoes,
       diagnostico: resp.diagnostico,
       mensagem: resp.mensagem,
       sugestoes: resp.sugestoes ?? [],

@@ -38,17 +38,21 @@ import {
 } from "@/components/ui/dialog";
 import {
   useCriarProvaRascunho,
-  useGerarProvaAutomatica,
   useLiberarProva,
   useMontarProva,
   useProvaTurmas,
+  useSugerirQuestoesProva,
 } from "@/hooks/api/use-provas";
 import {
   useAtualizarSimulado,
   useGestorSimulado,
   type TurmaEnriquecida,
 } from "@/hooks/api/use-gestor";
-import { useAdminQuestoes, useCriarQuestao } from "@/hooks/api/use-admin";
+import {
+  useAdminConfiguracoes,
+  useAdminQuestoes,
+  useCriarQuestao,
+} from "@/hooks/api/use-admin";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   NOMES_MATERIA,
@@ -74,10 +78,12 @@ export function ConstrutorProva() {
   const perfil = useAuthStore((s) => s.usuario?.perfil);
   const pathname = usePathname();
   const { data: turmas = [], isLoading: turmasCarregando } = useProvaTurmas();
+  const { data: configuracoes = [] } = useAdminConfiguracoes();
   const [idEdicao, setIdEdicao] = useState<string | undefined>(undefined);
   const [edicaoCarregada, setEdicaoCarregada] = useState(false);
   const [nome, setNome] = useState("");
   const [turmaId, setTurmaId] = useState("");
+  const [tempoLimiteMinutos, setTempoLimiteMinutos] = useState(60);
   const [busca, setBusca] = useState("");
   const [filtroSerie, setFiltroSerie] = useState("todos");
   const [filtroMateria, setFiltroMateria] = useState("todos");
@@ -104,7 +110,7 @@ export function ConstrutorProva() {
   const totalPaginasBanco = metaBanco?.totalPaginas ?? 1;
 
   const criarRascunho = useCriarProvaRascunho();
-  const gerarAutomatica = useGerarProvaAutomatica();
+  const sugerirQuestoes = useSugerirQuestoesProva();
   const atualizarSimulado = useAtualizarSimulado();
   const montar = useMontarProva();
   const liberar = useLiberarProva();
@@ -121,6 +127,23 @@ export function ConstrutorProva() {
     () => turmas.find((t) => t.id === turmaId),
     [turmaId, turmas],
   );
+  const configProvas = useMemo(() => {
+    const valor =
+      configuracoes.find((config) => config.chave === "provas")?.valor ?? {};
+    const minimo = Number(valor.quantidadeMinimaQuestoes ?? 3);
+    const maximo = Number(valor.quantidadeMaximaQuestoes ?? 100);
+    const tempo = Number(valor.tempoPadraoMinutos ?? 60);
+    return {
+      quantidadeMinimaQuestoes: Number.isFinite(minimo) ? Math.max(1, minimo) : 3,
+      quantidadeMaximaQuestoes: Number.isFinite(maximo) ? Math.max(1, maximo) : 100,
+      tempoPadraoMinutos: Number.isFinite(tempo) ? Math.max(1, tempo) : 60,
+    };
+  }, [configuracoes]);
+  const quantidadeMinima = configProvas.quantidadeMinimaQuestoes;
+  const quantidadeMaxima = Math.max(
+    quantidadeMinima,
+    configProvas.quantidadeMaximaQuestoes,
+  );
 
   useEffect(() => {
     const idTimeout = window.setTimeout(() => {
@@ -132,16 +155,28 @@ export function ConstrutorProva() {
   }, []);
 
   useEffect(() => {
+    if (idEdicao || edicaoCarregada) return;
+    const idTimeout = window.setTimeout(
+      () => setTempoLimiteMinutos(configProvas.tempoPadraoMinutos),
+      0,
+    );
+    return () => window.clearTimeout(idTimeout);
+  }, [configProvas.tempoPadraoMinutos, edicaoCarregada, idEdicao]);
+
+  useEffect(() => {
     if (!dadosEdicao?.simulado || edicaoCarregada) return;
     const parametros = dadosEdicao.simulado.parametros;
     const idTimeout = window.setTimeout(() => {
       setNome(parametros.nome?.trim() || `Simulado ${dadosEdicao.simulado.id}`);
       setTurmaId(parametros.turmaId || "");
+      setTempoLimiteMinutos(
+        Math.max(1, Number(parametros.tempoLimiteMinutos) || configProvas.tempoPadraoMinutos),
+      );
       setSelecionadas(dadosEdicao.questoes);
       setEdicaoCarregada(true);
     }, 0);
     return () => window.clearTimeout(idTimeout);
-  }, [dadosEdicao, edicaoCarregada]);
+  }, [configProvas.tempoPadraoMinutos, dadosEdicao, edicaoCarregada]);
 
   // volta pra página 1 quando muda a busca ou qualquer filtro do banco
   useEffect(() => {
@@ -159,29 +194,47 @@ export function ConstrutorProva() {
 
   const turmasAgrupadas = useMemo(() => agruparPorEscola(turmas), [turmas]);
   const podeSalvar =
-    nome.trim().length >= 3 && Boolean(turmaId) && selecionadas.length > 0;
+    nome.trim().length >= 3 &&
+    Boolean(turmaId) &&
+    selecionadas.length >= quantidadeMinima &&
+    selecionadas.length <= quantidadeMaxima;
   const salvando =
     criarRascunho.isPending ||
-    gerarAutomatica.isPending ||
+    sugerirQuestoes.isPending ||
     atualizarSimulado.isPending ||
     montar.isPending ||
     liberar.isPending;
 
   function adicionar(q: Questao) {
-    setSelecionadas((s) => [...s, q]);
+    setSelecionadas((s) => {
+      if (s.some((item) => item.id === q.id)) return s;
+      if (s.length >= quantidadeMaxima) {
+        toast.warning(`A prova não pode ter mais de ${quantidadeMaxima} questões.`);
+        return s;
+      }
+      return [...s, q];
+    });
   }
   function remover(id: string) {
     setSelecionadas((s) => s.filter((q) => q.id !== id));
   }
 
   async function gerarPorFiltros() {
-    if (!turmaId || gerarAutomatica.isPending) return;
-    const quantidade = Math.max(1, Math.min(100, quantidadeAutomatica || 10));
+    if (!turmaId || sugerirQuestoes.isPending) return;
+    const vagasDisponiveis = quantidadeMaxima - selecionadas.length;
+    if (vagasDisponiveis <= 0) {
+      toast.warning(`A prova não pode ter mais de ${quantidadeMaxima} questões.`);
+      return;
+    }
+    const quantidade = Math.max(
+      1,
+      Math.min(vagasDisponiveis, quantidadeAutomatica || 10),
+    );
     const nomeProva =
       nome.trim() ||
       `Prova automática ${turmaSelecionada?.nome ? `· ${turmaSelecionada.nome}` : ""}`.trim();
     try {
-      const resposta = await gerarAutomatica.mutateAsync({
+      const resposta = await sugerirQuestoes.mutateAsync({
         nome: nomeProva,
         turmaId,
         serie:
@@ -194,13 +247,17 @@ export function ConstrutorProva() {
           filtroNivel !== "todos" ? [filtroNivel as NivelDificuldade] : undefined,
         quantidade,
         quantidadeQuestoes: quantidade,
-        tempoLimiteMinutos: 60,
+        tempoLimiteMinutos,
         evitarQuestoesJaUsadas: false,
       });
-      setNome(resposta.simulado.parametros.nome || nomeProva);
-      setIdEdicao(resposta.simulado.id);
-      setEdicaoCarregada(true);
-      setSelecionadas(resposta.questoesSelecionadas);
+      setNome((atual) => atual || nomeProva);
+      setSelecionadas((atuais) => {
+        const idsAtuais = new Set(atuais.map((q) => q.id));
+        const novas = resposta.questoesSelecionadas.filter(
+          (q) => !idsAtuais.has(q.id),
+        );
+        return [...atuais, ...novas].slice(0, quantidadeMaxima);
+      });
       toast.success(
         `${resposta.questoesSelecionadas.length} questões selecionadas pelo banco`,
       );
@@ -227,7 +284,7 @@ export function ConstrutorProva() {
       quantidadeQuestoes: selecionadas.length,
       distribuicao,
       adaptacoesAceitas: [],
-      tempoLimiteMinutos: 60,
+      tempoLimiteMinutos,
       liberadoEm: new Date().toISOString().slice(0, 10),
     };
     try {
@@ -262,6 +319,7 @@ export function ConstrutorProva() {
     setFiltroSerie("todos");
     setFiltroMateria("todos");
     setFiltroNivel("todos");
+    setTempoLimiteMinutos(configProvas.tempoPadraoMinutos);
     setPaginaBanco(1);
     setQuantidadeAutomatica(10);
     setSelecionadas([]);
@@ -325,7 +383,7 @@ export function ConstrutorProva() {
       )}
 
       {/* Dados da prova */}
-      <section className="mt-6 grid gap-4 rounded-xl border border-border bg-card p-5 md:grid-cols-2 md:p-6">
+      <section className="mt-6 grid gap-4 rounded-xl border border-border bg-card p-5 md:grid-cols-3 md:p-6">
         <div className="space-y-1.5">
           <Label htmlFor="prova-nome">Nome da prova</Label>
           <Input
@@ -364,6 +422,21 @@ export function ConstrutorProva() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="prova-tempo">Tempo limite (min)</Label>
+          <Input
+            id="prova-tempo"
+            type="number"
+            min={1}
+            max={480}
+            value={tempoLimiteMinutos}
+            onChange={(e) =>
+              setTempoLimiteMinutos(
+                Math.max(1, Math.min(480, Number(e.target.value) || 1)),
+              )
+            }
+          />
         </div>
       </section>
 
@@ -465,7 +538,7 @@ export function ConstrutorProva() {
                 id="qtd-automatica"
                 type="number"
                 min={1}
-                max={100}
+                max={quantidadeMaxima}
                 value={quantidadeAutomatica}
                 onChange={(e) =>
                   setQuantidadeAutomatica(Number(e.target.value) || 1)
@@ -477,10 +550,10 @@ export function ConstrutorProva() {
               type="button"
               variant="secondary"
               className="w-full gap-2 sm:flex-1"
-              disabled={!turmaId || gerarAutomatica.isPending}
+              disabled={!turmaId || sugerirQuestoes.isPending}
               onClick={gerarPorFiltros}
             >
-              {gerarAutomatica.isPending ? (
+              {sugerirQuestoes.isPending ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : (
                 <Sparkles className="size-4" aria-hidden />
@@ -612,7 +685,11 @@ export function ConstrutorProva() {
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-6 py-3">
           <p className="hidden text-xs text-muted-foreground sm:block">
             {selecionadas.length} questão(ões) ·{" "}
-            {podeSalvar ? "pronto para salvar" : "preencha nome, turma e 1+ questão"}
+            {podeSalvar
+              ? "pronto para salvar"
+              : selecionadas.length < quantidadeMinima
+                ? `mínimo de ${quantidadeMinima} questões`
+                : "preencha nome e turma"}
           </p>
           <div className="flex flex-1 justify-end gap-2 sm:flex-none">
             <Button variant="ghost" asChild>

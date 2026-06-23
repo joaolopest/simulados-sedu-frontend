@@ -33,6 +33,12 @@ export interface RespostaGeracaoProva {
   avisos: string[];
 }
 
+export interface RespostaSugestaoQuestoesProva {
+  questoesSelecionadas: Questao[];
+  questaoIds: string[];
+  avisos: string[];
+}
+
 export interface ValidacaoProva {
   ok: boolean;
   erros: string[];
@@ -89,6 +95,16 @@ export function useGerarProvaAutomatica() {
       qc.invalidateQueries({ queryKey: ["gestor", "simulados"] });
       qc.invalidateQueries({ queryKey: ["gestor", "dashboard"] });
     },
+  });
+}
+
+export function useSugerirQuestoesProva() {
+  return useMutation({
+    mutationFn: (parametros: ParametrosGeracaoProva) =>
+      criar<RespostaSugestaoQuestoesProva>(
+        "/provas/questoes-sugeridas",
+        parametros,
+      ),
   });
 }
 

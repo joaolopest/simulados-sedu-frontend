@@ -145,8 +145,13 @@ export default function PaginaExecutarSimulado({
     toast.error("Tempo esgotado", {
       description: "Enviando suas respostas...",
     });
-    await enviarFinal(id, respostas, true);
+    const finalizacao = await enviarFinal(id, respostas, true);
     finalizarSimulado();
+    if (finalizacao.resultadoDisponivel === false) {
+      toast.success(finalizacao.mensagem ?? "Respostas enviadas.");
+      router.push("/aluno/home");
+      return;
+    }
     router.push(`/aluno/simulado/${id}/resultado`);
   }, [id, respostas, finalizarSimulado, router]);
 
@@ -615,9 +620,14 @@ export default function PaginaExecutarSimulado({
               onClick={async () => {
                 setEnviandoFinal(true);
                 try {
-                  await enviarFinal(id, respostas, false);
+                  const finalizacao = await enviarFinal(id, respostas, false);
                   finalizarSimulado();
                   limpar();
+                  if (finalizacao.resultadoDisponivel === false) {
+                    toast.success(finalizacao.mensagem ?? "Respostas enviadas.");
+                    router.push("/aluno/home");
+                    return;
+                  }
                   router.push(`/aluno/simulado/${id}/resultado`);
                 } finally {
                   setEnviandoFinal(false);
@@ -676,12 +686,15 @@ async function enviarFinal(
   simuladoId: string,
   respostas: Record<string, RespostaQuestao>,
   porTempoEsgotado: boolean,
-): Promise<void> {
+): Promise<{ resultadoDisponivel?: boolean; mensagem?: string }> {
   try {
-    await criar(`/simulados/${simuladoId}/finalizar`, {
+    return await criar<{ resultadoDisponivel?: boolean; mensagem?: string }>(
+      `/simulados/${simuladoId}/finalizar`,
+      {
       respostas: Object.values(respostas),
       porTempoEsgotado,
-    });
+      },
+    );
   } catch (erro) {
     toast.error("Falha ao enviar respostas para o banco.");
     throw erro;
