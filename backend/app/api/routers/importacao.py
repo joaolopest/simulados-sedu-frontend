@@ -75,3 +75,24 @@ def importar_questoes(
         "rejeitadas": relatorio.rejeitadas,
         "erros": [{"linha": e.linha, "motivo": e.motivo} for e in relatorio.erros],
     }
+
+
+@router.post("/import/validar", summary="Validar lote de questões sem gravar")
+def validar_importacao_questoes(
+    req: ImportarQuestoesRequest,
+    _usuario: Usuario = Depends(so_admin),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    try:
+        relatorio = importacao_service.validar_questoes(
+            sessao, {"questoes": req.questoes}
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "valido": relatorio.rejeitadas == 0,
+        "validas": relatorio.importadas,
+        "rejeitadas": relatorio.rejeitadas,
+        "erros": [{"linha": e.linha, "motivo": e.motivo} for e in relatorio.erros],
+    }

@@ -43,6 +43,17 @@ export interface RespostaDashboardAdmin {
     totalAlunos: number;
     taxaParticipacao: number;
   }[];
+  qualidadeAcervo?: {
+    totalQuestoes: number;
+    publicadas: number;
+    rascunhos: number;
+    emRevisao: number;
+    arquivadas: number;
+    comAlertas: number;
+    semRespostas: number;
+    taxaMediaAcerto: number;
+    principaisAlertas: { codigo: string; total: number }[];
+  };
   insights: unknown[];
 }
 
@@ -56,6 +67,51 @@ export function useAdminDashboard() {
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     refetchInterval: 30_000,
+  });
+}
+
+export interface DiagnosticoAdmin {
+  status: "ok" | "atencao" | "critico" | string;
+  checadoEm: string;
+  ambiente: {
+    tipoBanco: string;
+    dialeto: string;
+    hostClassificado: string;
+    driver: string;
+    python?: string;
+    plataforma?: string;
+  };
+  operacional: {
+    banco: {
+      status: "online" | "offline" | string;
+      latenciaMs: number;
+      erro?: string | null;
+    };
+    schema: {
+      tabelasEsperadas: number;
+      tabelasEncontradas: number;
+      tabelasAusentes: string[];
+      ok: boolean;
+    };
+    atividade: {
+      ultimaAuditoriaEm?: string | null;
+      ultimaRespostaEm?: string | null;
+      ultimaTentativaEm?: string | null;
+    };
+  };
+  pendencias: {
+    criticas: { codigo: string; mensagem: string; total?: number }[];
+    avisos: { codigo: string; mensagem: string; total?: number }[];
+  };
+  recomendacoes: string[];
+}
+
+export function useAdminDiagnostico() {
+  return useQuery({
+    queryKey: ["admin", "diagnostico"],
+    queryFn: () => obter<DiagnosticoAdmin>("/admin/diagnostico"),
+    staleTime: 10_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -108,6 +164,7 @@ export function useAtualizarConfiguracao() {
 // ============================================================
 
 export interface FiltrosQuestao {
+  escopo?: "permitidas" | "minhas" | "escola" | "rede";
   busca?: string;
   serie?: SerieEscolar[];
   materia?: Materia[];
@@ -133,8 +190,9 @@ export interface RespostaQuestoesPaginada {
   };
 }
 
-export function useAdminQuestoes(filtros?: FiltrosQuestao) {
+function montarParamsQuestoes(filtros?: FiltrosQuestao): URLSearchParams {
   const params = new URLSearchParams();
+  if (filtros?.escopo) params.set("escopo", filtros.escopo);
   if (filtros?.busca) params.set("busca", filtros.busca);
   filtros?.serie?.forEach((s) => params.append("serie", s));
   filtros?.materia?.forEach((m) => params.append("materia", m));
@@ -150,6 +208,11 @@ export function useAdminQuestoes(filtros?: FiltrosQuestao) {
   }
   if (filtros?.pagina) params.set("pagina", String(filtros.pagina));
   if (filtros?.porPagina) params.set("porPagina", String(filtros.porPagina));
+  return params;
+}
+
+export function useAdminQuestoes(filtros?: FiltrosQuestao) {
+  const params = montarParamsQuestoes(filtros);
   const qs = params.toString();
 
   return useQuery({
@@ -157,6 +220,54 @@ export function useAdminQuestoes(filtros?: FiltrosQuestao) {
     queryFn: () =>
       obter<RespostaQuestoesPaginada>(`/questoes${qs ? `?${qs}` : ""}`),
     staleTime: 15_000,
+  });
+}
+
+export interface MetricasQuestao {
+  questaoId: string;
+  totalUsos: number;
+  usosRecentes: number;
+  totalRespostas: number;
+  preenchidas: number;
+  acertos: number;
+  erros: number;
+  emBranco: number;
+  taxaAcerto: number;
+  taxaErro: number;
+  taxaBranco: number;
+  tempoMedioSegundos: number;
+  usadaRecentemente: boolean;
+  alternativasTotal: number;
+  alternativasCorretas: number;
+  alertas: string[];
+}
+
+export interface ItemMetricasQuestao {
+  questao: Questao;
+  metricas: MetricasQuestao;
+}
+
+export interface RespostaMetricasQuestoesPaginada {
+  dados: ItemMetricasQuestao[];
+  meta: {
+    pagina: number;
+    porPagina: number;
+    total: number;
+    totalPaginas: number;
+  };
+}
+
+export function useMetricasQuestoes(filtros?: FiltrosQuestao) {
+  const params = montarParamsQuestoes(filtros);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ["admin", "questoes", "metricas", filtros],
+    queryFn: () =>
+      obter<RespostaMetricasQuestoesPaginada>(
+        `/questoes/metricas${qs ? `?${qs}` : ""}`,
+      ),
+    staleTime: 30_000,
   });
 }
 
@@ -205,10 +316,39 @@ export function useRemoverQuestao() {
   });
 }
 
+export interface PayloadImportacaoQuestoes {
+  questoes: unknown[];
+  totalLinhas?: number;
+  arquivoNome?: string;
+}
+
+export interface ResultadoValidacaoImportacao {
+  valido: boolean;
+  totalLinhas: number;
+  validas: number;
+  rejeitadas: ResultadoImportacao["rejeitadas"];
+}
+
 export function useImportarQuestoes() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dados: { arquivoNome: string; totalLinhas: number }) =>
+    mutationFn: (dados: PayloadImportacaoQuestoes) =>
       criar<ResultadoImportacao>("/admin/questoes/importar", dados),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "questoes"] });
+      qc.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+      qc.invalidateQueries({ queryKey: ["admin", "auditoria"] });
+    },
+  });
+}
+
+export function useValidarImportacaoQuestoes() {
+  return useMutation({
+    mutationFn: (dados: PayloadImportacaoQuestoes) =>
+      criar<ResultadoValidacaoImportacao>(
+        "/admin/questoes/importar/validar",
+        dados,
+      ),
   });
 }
 

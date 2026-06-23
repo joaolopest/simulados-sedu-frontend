@@ -31,6 +31,7 @@ from app.api.routers import (
     estrutura,
     etapas,
     etiquetas,
+    ia,
     importacao,
     notificacoes,
     painel,
@@ -196,6 +197,7 @@ app.include_router(cadastro.router)
 app.include_router(estrutura.router)
 app.include_router(usuarios.router)
 app.include_router(etiquetas.router)
+app.include_router(ia.router)
 app.include_router(questoes.router)
 app.include_router(importacao.router)
 app.include_router(provas.router)

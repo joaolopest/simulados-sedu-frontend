@@ -15,7 +15,11 @@ import {
 import Papa from "papaparse";
 import { toast } from "sonner";
 
-import { useImportarQuestoes } from "@/hooks/api/use-admin";
+import {
+  useImportarQuestoes,
+  useValidarImportacaoQuestoes,
+  type PayloadImportacaoQuestoes,
+} from "@/hooks/api/use-admin";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -38,10 +42,53 @@ import type { ResultadoImportacao } from "@/types";
 type Estado = "ocioso" | "processando" | "resultado";
 
 const ETAPAS: { ate: number; rotulo: string }[] = [
-  { ate: 30, rotulo: "Validando estrutura JSON…" },
-  { ate: 60, rotulo: "Verificando schema das questões…" },
-  { ate: 100, rotulo: "Importando para o banco…" },
+  { ate: 30, rotulo: "Lendo arquivo JSON..." },
+  { ate: 65, rotulo: "Validando schema no backend..." },
+  { ate: 100, rotulo: "Importando para o banco..." },
 ];
+
+function normalizarQuestaoImportacao(item: unknown): Record<string, unknown> {
+  if (!item || typeof item !== "object") return {};
+  const q = { ...(item as Record<string, unknown>) };
+  const etiquetas =
+    q.etiquetas && typeof q.etiquetas === "object"
+      ? (q.etiquetas as Record<string, unknown>)
+      : null;
+
+  if (etiquetas) {
+    q.serie ??= etiquetas.serie;
+    q.materia ??= etiquetas.materia;
+    q.conteudo ??= etiquetas.conteudo;
+    q.nivel ??= etiquetas.nivel;
+  }
+  if (q.imagemUrl === undefined && q.imagem_url !== undefined) {
+    q.imagemUrl = q.imagem_url;
+  }
+  return q;
+}
+
+function montarPayloadImportacao(
+  json: unknown,
+  arquivoNome: string,
+): PayloadImportacaoQuestoes {
+  const bruto = Array.isArray(json)
+    ? json
+    : json && typeof json === "object"
+      ? (json as Record<string, unknown>).questoes
+      : null;
+
+  if (!Array.isArray(bruto)) {
+    throw new Error(
+      "O JSON precisa ser um array de questões ou um objeto com a chave 'questoes'.",
+    );
+  }
+
+  return {
+    arquivoNome,
+    totalLinhas: bruto.length,
+    questoes: bruto.map(normalizarQuestaoImportacao),
+  };
+}
 
 function formatarTamanho(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -56,12 +103,13 @@ export default function PaginaImportarQuestoes() {
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
 
   const importar = useImportarQuestoes();
+  const validar = useValidarImportacaoQuestoes();
 
   const etapaAtual = useMemo(() => {
     return ETAPAS.find((e) => progresso <= e.ate) ?? ETAPAS[ETAPAS.length - 1];
   }, [progresso]);
 
-  // Simulação de progresso visual
+  // Progresso visual enquanto o arquivo é lido, validado e importado.
   useEffect(() => {
     if (estado !== "processando") return;
     const intervalo = setInterval(() => {
@@ -85,31 +133,56 @@ export default function PaginaImportarQuestoes() {
       setEstado("processando");
       setProgresso(0);
 
-      const totalLinhas = Math.floor(Math.random() * 50) + 30;
+      void (async () => {
+        try {
+          const texto = await arq.text();
+          setProgresso(25);
+          const json = JSON.parse(texto) as unknown;
+          const payload = montarPayloadImportacao(json, arq.name);
+          setProgresso(45);
 
-      importar.mutate(
-        { arquivoNome: arq.name, totalLinhas },
-        {
-          onSuccess: (dados) => {
+          const relatorioValidacao = await validar.mutateAsync(payload);
+          setProgresso(70);
+
+          if (!relatorioValidacao.valido) {
+            const agora = new Date().toISOString();
+            setResultado({
+              totalLinhas: relatorioValidacao.totalLinhas,
+              importadas: 0,
+              rejeitadas: relatorioValidacao.rejeitadas,
+              iniciadoEm: agora,
+              finalizadoEm: agora,
+            });
             setProgresso(100);
-            setResultado(dados);
             setTimeout(() => {
               setEstado("resultado");
-              toast.success(
-                `${dados.importadas} de ${dados.totalLinhas} questões importadas`,
-              );
-            }, 400);
-          },
-          onError: () => {
-            toast.error("Falha na importação. Tenta de novo.");
-            setEstado("ocioso");
-            setArquivo(null);
-            setProgresso(0);
-          },
-        },
-      );
+              toast.error("Arquivo validado com rejeições. Nada foi gravado.");
+            }, 300);
+            return;
+          }
+
+          const dados = await importar.mutateAsync(payload);
+          setProgresso(100);
+          setResultado(dados);
+          setTimeout(() => {
+            setEstado("resultado");
+            toast.success(
+              `${dados.importadas} de ${dados.totalLinhas} questões importadas`,
+            );
+          }, 400);
+        } catch (erro) {
+          toast.error(
+            erro instanceof Error
+              ? erro.message
+              : "Falha na importação. Tenta de novo.",
+          );
+          setEstado("ocioso");
+          setArquivo(null);
+          setProgresso(0);
+        }
+      })();
     },
-    [importar],
+    [importar, validar],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

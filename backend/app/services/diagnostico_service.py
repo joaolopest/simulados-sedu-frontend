@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import platform
+import sys
 from datetime import datetime, timezone
+from time import perf_counter
 from urllib.parse import urlparse
 
-from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy import case, exists, func, inspect, or_, select, text
 from sqlalchemy.orm import Session
 
-from app.database import DATABASE_URL, engine
+from app.database import DATABASE_URL, Base, engine
 from app.enums import StatusQuestao, StatusSimulado
 from app.models import (
     AcaoAuditoria,
@@ -34,9 +37,10 @@ CONFIGS_OBRIGATORIAS = {"provas", "acessibilidade", "resultados"}
 def gerar_diagnostico(sessao: Session) -> dict:
     contagens = _contagens(sessao)
     ambiente = _ambiente()
+    operacional = _operacional(sessao)
     integridade = _integridade(sessao)
     configuracoes = _configuracoes(sessao)
-    pendencias = _pendencias(contagens, integridade, configuracoes)
+    pendencias = _pendencias(contagens, integridade, configuracoes, operacional)
 
     status = "ok"
     if pendencias["criticas"]:
@@ -48,11 +52,12 @@ def gerar_diagnostico(sessao: Session) -> dict:
         "status": status,
         "checadoEm": datetime.now(timezone.utc).isoformat(),
         "ambiente": ambiente,
+        "operacional": operacional,
         "contagens": contagens,
         "configuracoes": configuracoes,
         "integridade": integridade,
         "pendencias": pendencias,
-        "recomendacoes": _recomendacoes(status, integridade, configuracoes),
+        "recomendacoes": _recomendacoes(status, integridade, configuracoes, operacional),
     }
 
 
@@ -160,6 +165,49 @@ def _ambiente() -> dict:
         "dialeto": engine.dialect.name,
         "hostClassificado": tipo,
         "driver": engine.driver,
+        "python": sys.version.split()[0],
+        "plataforma": platform.system(),
+    }
+
+
+def _operacional(sessao: Session) -> dict:
+    inicio = perf_counter()
+    banco = {"status": "online", "latenciaMs": 0.0, "erro": None}
+    try:
+        sessao.execute(text("SELECT 1"))
+    except Exception as exc:
+        banco = {
+            "status": "offline",
+            "latenciaMs": round((perf_counter() - inicio) * 1000, 2),
+            "erro": exc.__class__.__name__,
+        }
+    else:
+        banco["latenciaMs"] = round((perf_counter() - inicio) * 1000, 2)
+
+    tabelas_modelo = set(Base.metadata.tables.keys())
+    try:
+        tabelas_banco = set(inspect(engine).get_table_names())
+    except Exception:
+        tabelas_banco = set()
+    tabelas_ausentes = sorted(tabelas_modelo - tabelas_banco)
+
+    ultima_auditoria = sessao.scalar(select(func.max(AcaoAuditoria.ocorrido_em)))
+    ultima_resposta = sessao.scalar(select(func.max(Resposta.respondida_em)))
+    ultima_tentativa = sessao.scalar(select(func.max(SimuladoTentativa.ultima_atividade_em)))
+
+    return {
+        "banco": banco,
+        "schema": {
+            "tabelasEsperadas": len(tabelas_modelo),
+            "tabelasEncontradas": len(tabelas_banco),
+            "tabelasAusentes": tabelas_ausentes,
+            "ok": not tabelas_ausentes and bool(tabelas_banco),
+        },
+        "atividade": {
+            "ultimaAuditoriaEm": ultima_auditoria.isoformat() if ultima_auditoria else None,
+            "ultimaRespostaEm": ultima_resposta.isoformat() if ultima_resposta else None,
+            "ultimaTentativaEm": ultima_tentativa.isoformat() if ultima_tentativa else None,
+        },
     }
 
 
@@ -280,7 +328,12 @@ def _configuracoes(sessao: Session) -> dict:
     }
 
 
-def _pendencias(contagens: dict, integridade: dict, configuracoes: dict) -> dict:
+def _pendencias(
+    contagens: dict,
+    integridade: dict,
+    configuracoes: dict,
+    operacional: dict,
+) -> dict:
     criticas: list[dict] = []
     avisos: list[dict] = []
 
@@ -300,6 +353,33 @@ def _pendencias(contagens: dict, integridade: dict, configuracoes: dict) -> dict
             {
                 "codigo": "CONFIGURACAO_OBRIGATORIA_AUSENTE",
                 "mensagem": f"Configuracao obrigatoria ausente: {chave}.",
+            }
+        )
+
+    banco = operacional.get("banco", {})
+    schema = operacional.get("schema", {})
+    if banco.get("status") != "online":
+        criticas.append(
+            {
+                "codigo": "BANCO_OFFLINE",
+                "mensagem": "O banco de dados nao respondeu ao ping operacional.",
+                "erro": banco.get("erro"),
+            }
+        )
+    if schema.get("tabelasAusentes"):
+        criticas.append(
+            {
+                "codigo": "SCHEMA_INCOMPLETO",
+                "mensagem": "Existem tabelas esperadas que nao foram encontradas no banco.",
+                "tabelas": schema.get("tabelasAusentes"),
+            }
+        )
+    if float(banco.get("latenciaMs") or 0) > 500:
+        avisos.append(
+            {
+                "codigo": "BANCO_LENTO",
+                "mensagem": "A latencia do banco esta alta para uso interativo.",
+                "latenciaMs": banco.get("latenciaMs"),
             }
         )
 
@@ -328,12 +408,23 @@ def _pendencias(contagens: dict, integridade: dict, configuracoes: dict) -> dict
     return {"criticas": criticas, "avisos": avisos}
 
 
-def _recomendacoes(status: str, integridade: dict, configuracoes: dict) -> list[str]:
+def _recomendacoes(
+    status: str,
+    integridade: dict,
+    configuracoes: dict,
+    operacional: dict,
+) -> list[str]:
     recomendacoes: list[str] = []
     if status == "ok":
         recomendacoes.append("Base operacional consistente para os fluxos principais.")
     if not configuracoes["ok"]:
         recomendacoes.append("Recriar configuracoes obrigatorias pelo seed seguro ou painel admin.")
+    if operacional.get("banco", {}).get("status") != "online":
+        recomendacoes.append("Verificar DATABASE_URL, conectividade com Supabase/Postgres e variaveis do deploy.")
+    if operacional.get("schema", {}).get("tabelasAusentes"):
+        recomendacoes.append("Executar migracoes idempotentes antes de liberar a aplicacao.")
+    if float(operacional.get("banco", {}).get("latenciaMs") or 0) > 500:
+        recomendacoes.append("Investigar regiao do banco/deploy, pooler Supabase e consultas lentas.")
     if integridade.get("questoesComGabaritoInvalido"):
         recomendacoes.append("Resolver gabaritos invalidos antes de liberar novas provas.")
     if integridade.get("provasLiberadasSemSnapshot"):

@@ -104,6 +104,19 @@ def _validar_e_construir(sessao: Session, q: dict) -> Questao:
 
 
 def importar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
+    return _processar_questoes(sessao, payload, persistir=True)
+
+
+def validar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
+    return _processar_questoes(sessao, payload, persistir=False)
+
+
+def _processar_questoes(
+    sessao: Session,
+    payload: dict,
+    *,
+    persistir: bool,
+) -> RelatorioImportacao:
     questoes = payload.get("questoes")
     if not isinstance(questoes, list):
         raise ValueError(
@@ -123,7 +136,8 @@ def importar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
                 relatorio.erros.append(ErroImportacao(linha=indice, motivo=str(exc)))
 
     if validas:
-        sessao.add_all(validas)
-        sessao.commit()
+        if persistir:
+            sessao.add_all(validas)
+            sessao.commit()
 
     return relatorio

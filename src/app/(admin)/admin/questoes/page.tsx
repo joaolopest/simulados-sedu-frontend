@@ -5,8 +5,11 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowRight,
+  AlertTriangle,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileQuestion,
   Filter,
   MoreHorizontal,
@@ -19,9 +22,12 @@ import { toast } from "sonner";
 import {
   useAdminQuestoes,
   useAtualizarQuestao,
+  useMetricasQuestoes,
   useRemoverQuestao,
   type FiltrosQuestao,
+  type MetricasQuestao,
 } from "@/hooks/api/use-admin";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,6 +87,15 @@ const ADAPTACOES = Object.entries(NOMES_ADAPTACAO) as [
 
 const POR_PAGINA = 20;
 
+type EscopoQuestao = NonNullable<FiltrosQuestao["escopo"]>;
+
+const ESCOPOS: { valor: EscopoQuestao; rotulo: string }[] = [
+  { valor: "permitidas", rotulo: "Permitidas" },
+  { valor: "minhas", rotulo: "Minhas" },
+  { valor: "escola", rotulo: "Minha escola" },
+  { valor: "rede", rotulo: "Rede" },
+];
+
 const TOM_NIVEL: Record<
   NivelDificuldade,
   { bg: string; texto: string; ponto: string }
@@ -110,6 +125,7 @@ const TOM_STATUS: Record<StatusQuestao, string> = {
 };
 
 function ConteudoAdminQuestoes() {
+  const { usuario } = useAuth();
   const searchParams = useSearchParams();
   const statusInicial = useMemo(() => {
     const valor = searchParams.get("status");
@@ -123,6 +139,7 @@ function ConteudoAdminQuestoes() {
 
   const [busca, setBusca] = useState<string>("");
   const [buscaDebounced, setBuscaDebounced] = useState<string>("");
+  const [escopo, setEscopo] = useState<EscopoQuestao>("permitidas");
   const [series, setSeries] = useState<SerieEscolar[]>([]);
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [niveis, setNiveis] = useState<NivelDificuldade[]>([]);
@@ -146,6 +163,7 @@ function ConteudoAdminQuestoes() {
   // Reset página quando filtros mudam
   const filtros = useMemo<FiltrosQuestao>(
     () => ({
+      escopo,
       busca: buscaDebounced || undefined,
       serie: series.length > 0 ? series : undefined,
       materia: materias.length > 0 ? materias : undefined,
@@ -155,12 +173,41 @@ function ConteudoAdminQuestoes() {
       pagina,
       porPagina: POR_PAGINA,
     }),
-    [buscaDebounced, series, materias, niveis, adaptacoes, statuses, pagina],
+    [escopo, buscaDebounced, series, materias, niveis, adaptacoes, statuses, pagina],
   );
 
   const { data, isLoading, isError, refetch } = useAdminQuestoes(filtros);
+  const { data: metricasData, isLoading: metricasLoading } =
+    useMetricasQuestoes(filtros);
   const atualizar = useAtualizarQuestao();
   const remover = useRemoverQuestao();
+
+  const metricasPorQuestao = useMemo(() => {
+    return new Map(
+      (metricasData?.dados ?? []).map((item) => [
+        item.questao.id,
+        item.metricas,
+      ]),
+    );
+  }, [metricasData]);
+
+  const resumoMetricas = useMemo(() => {
+    const metricas = metricasData?.dados.map((item) => item.metricas) ?? [];
+    const total = metricas.length;
+    const comAlertas = metricas.filter((m) => m.alertas.length > 0).length;
+    const semRespostas = metricas.filter((m) => m.totalRespostas === 0).length;
+    const taxaMedia =
+      total > 0
+        ? metricas.reduce((acc, m) => acc + m.taxaAcerto, 0) / total
+        : 0;
+    return { total, comAlertas, semRespostas, taxaMedia };
+  }, [metricasData]);
+
+  const escoposVisiveis = useMemo(() => {
+    return ESCOPOS.filter(
+      (opcao) => opcao.valor !== "escola" || Boolean(usuario?.escolaId),
+    );
+  }, [usuario?.escolaId]);
 
   function alterarStatusQuestao(id: string, novoStatus: StatusQuestao) {
     atualizar.mutate(
@@ -181,6 +228,7 @@ function ConteudoAdminQuestoes() {
   }
 
   const totalFiltros =
+    (escopo !== "permitidas" ? 1 : 0) +
     series.length +
     materias.length +
     niveis.length +
@@ -188,6 +236,7 @@ function ConteudoAdminQuestoes() {
     statuses.length;
 
   function limparFiltros() {
+    setEscopo("permitidas");
     setSeries([]);
     setMaterias([]);
     setNiveis([]);
@@ -208,6 +257,20 @@ function ConteudoAdminQuestoes() {
     ? Math.min(meta.pagina * meta.porPagina, meta.total)
     : 0;
 
+  function urlExportacao(formato: "csv" | "json"): string {
+    const params = new URLSearchParams();
+    params.set("formato", formato);
+    params.set("limite", "10000");
+    params.set("escopo", escopo);
+    if (buscaDebounced) params.set("busca", buscaDebounced);
+    for (const item of series) params.append("serie", item);
+    for (const item of materias) params.append("materia", item);
+    for (const item of niveis) params.append("nivel", item);
+    for (const item of adaptacoes) params.append("adaptacao", item);
+    for (const item of statuses) params.append("status", item);
+    return `/api/admin/questoes/exportar?${params.toString()}`;
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-10">
       {/* Header */}
@@ -227,6 +290,18 @@ function ConteudoAdminQuestoes() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href={urlExportacao("csv")}>
+              <Download data-icon="inline-start" />
+              Exportar CSV
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={urlExportacao("json")}>
+              <Download data-icon="inline-start" />
+              Exportar JSON
+            </Link>
+          </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/admin/questoes/importar">
               <Upload data-icon="inline-start" />
@@ -279,6 +354,21 @@ function ConteudoAdminQuestoes() {
             </Button>
           )}
         </div>
+
+        <GrupoChips rotulo="Escopo">
+          {escoposVisiveis.map(({ valor, rotulo }) => (
+            <Chip
+              key={valor}
+              ativo={escopo === valor}
+              onClick={() => {
+                setEscopo(valor);
+                setPagina(1);
+              }}
+            >
+              {rotulo}
+            </Chip>
+          ))}
+        </GrupoChips>
 
         <GrupoChips rotulo="Série">
           {SERIES.map(([valor, rotulo]) => (
@@ -342,6 +432,35 @@ function ConteudoAdminQuestoes() {
         </GrupoChips>
       </section>
 
+      {resumoMetricas.total > 0 && (
+        <section
+          className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+          aria-label="Resumo de qualidade das questões"
+        >
+          <CartaoMetrica
+            rotulo="Página analisada"
+            valor={`${resumoMetricas.total}`}
+            detalhe="questões nesta página"
+          />
+          <CartaoMetrica
+            rotulo="Taxa média"
+            valor={formatarPercentual(resumoMetricas.taxaMedia)}
+            detalhe="acerto nas respostas"
+          />
+          <CartaoMetrica
+            rotulo="Com alerta"
+            valor={`${resumoMetricas.comAlertas}`}
+            detalhe="exigem curadoria"
+            alerta={resumoMetricas.comAlertas > 0}
+          />
+          <CartaoMetrica
+            rotulo="Sem respostas"
+            valor={`${resumoMetricas.semRespostas}`}
+            detalhe="sem amostra real"
+          />
+        </section>
+      )}
+
       {/* Erro */}
       {isError && (
         <div
@@ -400,6 +519,9 @@ function ConteudoAdminQuestoes() {
                     <TableHead className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                       Status
                     </TableHead>
+                    <TableHead className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Qualidade
+                    </TableHead>
                     <TableHead className="w-[1%] font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                       Ações
                     </TableHead>
@@ -451,6 +573,12 @@ function ConteudoAdminQuestoes() {
                         >
                           {q.status}
                         </span>
+                      </TableCell>
+                      <TableCell className="min-w-48">
+                        <ResumoQualidadeQuestao
+                          metricas={metricasPorQuestao.get(q.id)}
+                          carregando={metricasLoading}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
@@ -562,6 +690,11 @@ function ConteudoAdminQuestoes() {
                       {NOMES_NIVEL[q.nivel]}
                     </span>
                   </div>
+                  <ResumoQualidadeQuestao
+                    metricas={metricasPorQuestao.get(q.id)}
+                    carregando={metricasLoading}
+                    compacto
+                  />
                 </Link>
               ))}
             </div>
@@ -667,6 +800,115 @@ export default function PaginaAdminQuestoes() {
       <ConteudoAdminQuestoes />
     </Suspense>
   );
+}
+
+function CartaoMetrica({
+  rotulo,
+  valor,
+  detalhe,
+  alerta = false,
+}: {
+  rotulo: string;
+  valor: string;
+  detalhe: string;
+  alerta?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-card p-4",
+        alerta ? "border-warning/40" : "border-border",
+      )}
+    >
+      <p className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        {alerta ? (
+          <AlertTriangle className="size-3 text-warning" aria-hidden />
+        ) : (
+          <BarChart3 className="size-3" aria-hidden />
+        )}
+        {rotulo}
+      </p>
+      <p className="mt-2 font-serif text-2xl tracking-tight">{valor}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>
+    </div>
+  );
+}
+
+function ResumoQualidadeQuestao({
+  metricas,
+  carregando,
+  compacto = false,
+}: {
+  metricas?: MetricasQuestao;
+  carregando: boolean;
+  compacto?: boolean;
+}) {
+  if (carregando && !metricas) {
+    return (
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-1.5",
+          compacto ? "mt-3" : "",
+        )}
+      >
+        <span className="h-5 w-20 animate-pulse rounded-full bg-muted" />
+        <span className="h-5 w-16 animate-pulse rounded-full bg-muted" />
+      </div>
+    );
+  }
+
+  if (!metricas) {
+    return (
+      <p
+        className={cn(
+          "font-mono text-[10px] uppercase tracking-wider text-muted-foreground",
+          compacto ? "mt-3" : "",
+        )}
+      >
+        Sem métrica
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-1.5",
+        compacto ? "mt-3" : "",
+      )}
+    >
+      <span
+        className={cn(
+          "rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+          tomTaxa(metricas.taxaAcerto),
+        )}
+      >
+        {formatarPercentual(metricas.taxaAcerto)} acerto
+      </span>
+      <Badge variant="outline" className="font-mono text-[10px] font-normal">
+        {metricas.totalRespostas} resp.
+      </Badge>
+      <Badge variant="outline" className="font-mono text-[10px] font-normal">
+        {metricas.totalUsos} usos
+      </Badge>
+      {metricas.alertas.length > 0 && (
+        <span className="rounded-full bg-warning-muted px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-warning">
+          {metricas.alertas.length} alerta
+          {metricas.alertas.length > 1 ? "s" : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function formatarPercentual(taxa: number): string {
+  return `${Math.round((Number.isFinite(taxa) ? taxa : 0) * 100)}%`;
+}
+
+function tomTaxa(taxa: number): string {
+  if (taxa >= 0.7) return "bg-success-muted text-success";
+  if (taxa >= 0.4) return "bg-warning-muted text-warning";
+  return "bg-destructive-muted text-destructive";
 }
 
 // ============================================================

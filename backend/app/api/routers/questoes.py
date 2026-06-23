@@ -1,8 +1,11 @@
 ﻿from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import csv
+from io import StringIO
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -30,6 +33,7 @@ from app.models import (
     Usuario,
 )
 from app.services import auditoria_service
+from app.services import metricas_questoes_service
 from app.services import questao_service
 
 router = APIRouter(prefix="/questoes", tags=["questoes"])
@@ -214,24 +218,23 @@ def _aplicar_campos_questao(
         questao.imagem_url = dados["imagem_url"]
 
 
-@router.get("", summary="Listar e filtrar questões")
-def listar_questoes(
-    busca: str | None = Query(None),
-    serie: list[str] | None = Query(None, description="Nomes de série (ex.: '9º ano')"),
-    materia: list[str] | None = Query(None),
-    conteudo: list[str] | None = Query(None),
-    nivel: list[str] | None = Query(None),
-    status: list[str] | None = Query(None),
-    adaptacao: list[str] | None = Query(None),
-    competencia: list[str] | None = Query(None),
-    escola_id: list[int] | None = Query(None),
-    criado_por_id: list[int] | None = Query(None),
-    com_imagem: bool | None = Query(None),
-    pagina: int = Query(1, ge=1),
-    por_pagina: int = Query(20, ge=1, le=200),
-    usuario: Usuario = Depends(leitores_questao),
-    sessao: Session = Depends(get_session),
-) -> dict:
+def _query_questoes_filtrada(
+    sessao: Session,
+    usuario: Usuario,
+    *,
+    escopo: str | None,
+    busca: str | None,
+    serie: list[str] | None,
+    materia: list[str] | None,
+    conteudo: list[str] | None,
+    nivel: list[str] | None,
+    status: list[str] | None,
+    adaptacao: list[str] | None,
+    competencia: list[str] | None,
+    escola_id: list[int] | None,
+    criado_por_id: list[int] | None,
+    com_imagem: bool | None,
+):
     q = (
         sessao.query(Questao)
         .join(Serie, Questao.serie_id == Serie.id)
@@ -240,6 +243,30 @@ def listar_questoes(
         .join(Nivel, Questao.nivel_id == Nivel.id)
     )
     q = aplicar_escopo_questoes(q, usuario)
+    escopo_normalizado = (escopo or "permitidas").strip().lower()
+    if escopo_normalizado not in ("permitidas", "minhas", "escola", "rede"):
+        raise HTTPException(status_code=422, detail=f"escopo inválido: {escopo}")
+    if escopo_normalizado == "minhas":
+        q = q.filter(Questao.criado_por_id == usuario.id)
+    elif escopo_normalizado == "escola":
+        if usuario.escola_id is None:
+            q = q.filter(False)
+        else:
+            q = q.outerjoin(Usuario, Questao.criado_por_id == Usuario.id).filter(
+                or_(
+                    Questao.escola_id == usuario.escola_id,
+                    and_(
+                        Questao.escola_id.is_(None),
+                        Usuario.escola_id == usuario.escola_id,
+                    ),
+                )
+            )
+    elif escopo_normalizado == "rede":
+        if usuario.perfil != PerfilUsuario.ADMIN:
+            q = q.filter(
+                Questao.status == StatusQuestao.PUBLICADA,
+                Questao.escola_id.is_(None),
+            )
     if busca:
         q = q.filter(Questao.enunciado.ilike(f"%{busca}%"))
     if serie:
@@ -286,7 +313,18 @@ def listar_questoes(
             )
         else:
             usar_fallback_json = True
+    return q, usar_fallback_json
 
+
+def _paginar_questoes_filtradas(
+    q,
+    *,
+    usar_fallback_json: bool,
+    pagina: int,
+    por_pagina: int,
+    adaptacao: list[str] | None,
+    competencia: list[str] | None,
+) -> tuple[int, list[Questao]]:
     q_pagina = q.options(
         selectinload(Questao.serie),
         selectinload(Questao.materia),
@@ -309,15 +347,61 @@ def listar_questoes(
             ]
         total = len(itens)
         inicio = (pagina - 1) * por_pagina
-        pagina_itens = itens[inicio : inicio + por_pagina]
-    else:
-        total = q.count()
-        pagina_itens = (
-            q_pagina.order_by(Questao.id)
-            .offset((pagina - 1) * por_pagina)
-            .limit(por_pagina)
-            .all()
-        )
+        return total, itens[inicio : inicio + por_pagina]
+
+    total = q.count()
+    itens = (
+        q_pagina.order_by(Questao.id)
+        .offset((pagina - 1) * por_pagina)
+        .limit(por_pagina)
+        .all()
+    )
+    return total, itens
+
+
+@router.get("", summary="Listar e filtrar questões")
+def listar_questoes(
+    escopo: str | None = Query(None, description="permitidas|minhas|escola|rede"),
+    busca: str | None = Query(None),
+    serie: list[str] | None = Query(None, description="Nomes de série (ex.: '9º ano')"),
+    materia: list[str] | None = Query(None),
+    conteudo: list[str] | None = Query(None),
+    nivel: list[str] | None = Query(None),
+    status: list[str] | None = Query(None),
+    adaptacao: list[str] | None = Query(None),
+    competencia: list[str] | None = Query(None),
+    escola_id: list[int] | None = Query(None),
+    criado_por_id: list[int] | None = Query(None),
+    com_imagem: bool | None = Query(None),
+    pagina: int = Query(1, ge=1),
+    por_pagina: int = Query(20, ge=1, le=200),
+    usuario: Usuario = Depends(leitores_questao),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    q, usar_fallback_json = _query_questoes_filtrada(
+        sessao,
+        usuario,
+        escopo=escopo,
+        busca=busca,
+        serie=serie,
+        materia=materia,
+        conteudo=conteudo,
+        nivel=nivel,
+        status=status,
+        adaptacao=adaptacao,
+        competencia=competencia,
+        escola_id=escola_id,
+        criado_por_id=criado_por_id,
+        com_imagem=com_imagem,
+    )
+    total, pagina_itens = _paginar_questoes_filtradas(
+        q,
+        usar_fallback_json=usar_fallback_json,
+        pagina=pagina,
+        por_pagina=por_pagina,
+        adaptacao=adaptacao,
+        competencia=competencia,
+    )
 
     return {
         "total": total,
@@ -325,6 +409,167 @@ def listar_questoes(
         "por_pagina": por_pagina,
         "dados": [_serializar(x) for x in pagina_itens],
     }
+
+
+@router.get("/metricas", summary="Listar métricas de qualidade das questões")
+def listar_metricas_questoes(
+    escopo: str | None = Query(None, description="permitidas|minhas|escola|rede"),
+    busca: str | None = Query(None),
+    serie: list[str] | None = Query(None, description="Nomes de série (ex.: '9º ano')"),
+    materia: list[str] | None = Query(None),
+    conteudo: list[str] | None = Query(None),
+    nivel: list[str] | None = Query(None),
+    status: list[str] | None = Query(None),
+    adaptacao: list[str] | None = Query(None),
+    competencia: list[str] | None = Query(None),
+    escola_id: list[int] | None = Query(None),
+    criado_por_id: list[int] | None = Query(None),
+    com_imagem: bool | None = Query(None),
+    pagina: int = Query(1, ge=1),
+    por_pagina: int = Query(20, ge=1, le=200),
+    usuario: Usuario = Depends(leitores_questao),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    q, usar_fallback_json = _query_questoes_filtrada(
+        sessao,
+        usuario,
+        escopo=escopo,
+        busca=busca,
+        serie=serie,
+        materia=materia,
+        conteudo=conteudo,
+        nivel=nivel,
+        status=status,
+        adaptacao=adaptacao,
+        competencia=competencia,
+        escola_id=escola_id,
+        criado_por_id=criado_por_id,
+        com_imagem=com_imagem,
+    )
+    total, pagina_itens = _paginar_questoes_filtradas(
+        q,
+        usar_fallback_json=usar_fallback_json,
+        pagina=pagina,
+        por_pagina=por_pagina,
+        adaptacao=adaptacao,
+        competencia=competencia,
+    )
+    metricas = metricas_questoes_service.metricas_por_questoes(sessao, pagina_itens)
+    return {
+        "total": total,
+        "pagina": pagina,
+        "por_pagina": por_pagina,
+        "dados": [
+            {
+                "questao": _serializar(questao),
+                "metricas": metricas.get(questao.id, {}),
+            }
+            for questao in pagina_itens
+        ],
+    }
+
+
+def _csv_questoes_response(nome_arquivo: str, linhas: list[dict]) -> Response:
+    campos = [
+        "id",
+        "enunciado",
+        "serie",
+        "materia",
+        "conteudo",
+        "nivel",
+        "status",
+        "escola_id",
+        "criado_por_id",
+        "alternativas_total",
+        "alternativa_correta",
+        "criada_em",
+        "atualizada_em",
+    ]
+    saida = StringIO()
+    saida.write("\ufeff")
+    escritor = csv.DictWriter(saida, fieldnames=campos, extrasaction="ignore")
+    escritor.writeheader()
+    escritor.writerows(linhas)
+    return Response(
+        content=saida.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+    )
+
+
+def _linha_exportacao_questao(questao: Questao) -> dict:
+    correta = next((alt.texto for alt in questao.alternativas if alt.correta), "")
+    return {
+        "id": questao.id,
+        "enunciado": questao.enunciado,
+        "serie": questao.serie.nome if questao.serie else "",
+        "materia": questao.materia.nome if questao.materia else "",
+        "conteudo": questao.conteudo.nome if questao.conteudo else "",
+        "nivel": questao.nivel.nome if questao.nivel else "",
+        "status": questao.status.value,
+        "escola_id": questao.escola_id,
+        "criado_por_id": questao.criado_por_id,
+        "alternativas_total": len(questao.alternativas),
+        "alternativa_correta": correta,
+        "criada_em": questao.criada_em.isoformat() if questao.criada_em else None,
+        "atualizada_em": (
+            questao.atualizada_em.isoformat() if questao.atualizada_em else None
+        ),
+    }
+
+
+@router.get("/exportar", summary="Exportar banco de questões filtrado")
+def exportar_questoes(
+    formato: str = Query("csv", pattern="^(csv|json)$"),
+    escopo: str | None = Query(None, description="permitidas|minhas|escola|rede"),
+    busca: str | None = Query(None),
+    serie: list[str] | None = Query(None, description="Nomes de série (ex.: '9º ano')"),
+    materia: list[str] | None = Query(None),
+    conteudo: list[str] | None = Query(None),
+    nivel: list[str] | None = Query(None),
+    status: list[str] | None = Query(None),
+    adaptacao: list[str] | None = Query(None),
+    competencia: list[str] | None = Query(None),
+    escola_id: list[int] | None = Query(None),
+    criado_por_id: list[int] | None = Query(None),
+    com_imagem: bool | None = Query(None),
+    limite: int = Query(5000, ge=1, le=10000),
+    usuario: Usuario = Depends(leitores_questao),
+    sessao: Session = Depends(get_session),
+):
+    q, usar_fallback_json = _query_questoes_filtrada(
+        sessao,
+        usuario,
+        escopo=escopo,
+        busca=busca,
+        serie=serie,
+        materia=materia,
+        conteudo=conteudo,
+        nivel=nivel,
+        status=status,
+        adaptacao=adaptacao,
+        competencia=competencia,
+        escola_id=escola_id,
+        criado_por_id=criado_por_id,
+        com_imagem=com_imagem,
+    )
+    total, itens = _paginar_questoes_filtradas(
+        q,
+        usar_fallback_json=usar_fallback_json,
+        pagina=1,
+        por_pagina=limite,
+        adaptacao=adaptacao,
+        competencia=competencia,
+    )
+    linhas = [_linha_exportacao_questao(questao) for questao in itens]
+    if formato == "json":
+        return {
+            "totalFiltrado": total,
+            "totalExportado": len(linhas),
+            "truncado": total > len(linhas),
+            "dados": linhas,
+        }
+    return _csv_questoes_response("questoes-exportadas.csv", linhas)
 
 
 def _serializar_revisao(revisao: RevisaoQuestao) -> dict:

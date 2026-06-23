@@ -2,7 +2,7 @@
 
 import { Activity, AlertTriangle, Building2, FileQuestion, Sparkles } from "lucide-react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useAdminDashboard } from "@/hooks/api/use-admin";
+import { useAdminDashboard, useAdminDiagnostico } from "@/hooks/api/use-admin";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,9 +14,53 @@ import { cn, formatarPorcentagem, gerarIniciais } from "@/lib/utils";
 
 interface InsightCurto { id?: string; titulo?: string; texto?: string; }
 interface PontoTendencia { semana: string; questoes: number; simulados: number; importacoes: number; }
+interface QualidadeAcervo {
+  totalQuestoes: number;
+  publicadas: number;
+  rascunhos: number;
+  emRevisao: number;
+  arquivadas: number;
+  comAlertas: number;
+  semRespostas: number;
+  taxaMediaAcerto: number;
+  principaisAlertas: { codigo: string; total: number }[];
+}
+interface DiagnosticoOperacional {
+  status: string;
+  checadoEm: string;
+  ambiente: {
+    tipoBanco: string;
+    dialeto: string;
+    hostClassificado: string;
+    driver: string;
+    python?: string;
+    plataforma?: string;
+  };
+  operacional: {
+    banco: { status: string; latenciaMs: number; erro?: string | null };
+    schema: {
+      tabelasEsperadas: number;
+      tabelasEncontradas: number;
+      tabelasAusentes: string[];
+      ok: boolean;
+    };
+    atividade: {
+      ultimaAuditoriaEm?: string | null;
+      ultimaRespostaEm?: string | null;
+      ultimaTentativaEm?: string | null;
+    };
+  };
+  pendencias: {
+    criticas: { codigo: string; mensagem: string; total?: number }[];
+    avisos: { codigo: string; mensagem: string; total?: number }[];
+  };
+  recomendacoes: string[];
+}
 
 export default function PaginaDashboardAdmin() {
   const { data, isLoading, isError, refetch } = useAdminDashboard();
+  const { data: diagnostico, isLoading: carregandoDiagnostico } =
+    useAdminDiagnostico();
 
   return (
     <div className="shell-pagina">
@@ -62,6 +106,28 @@ export default function PaginaDashboardAdmin() {
         {isLoading || !data ? <Skeleton className="h-80 w-full rounded-xl" /> : <GraficoTendencia dados={data.tendenciaSemanal} />}
       </section>
 
+      {isLoading || !data ? (
+        <Skeleton className="mt-10 h-52 w-full rounded-xl" />
+      ) : data.qualidadeAcervo ? (
+        <section className="mt-10" aria-labelledby="qualidade-acervo-titulo">
+          <header className="mb-4">
+            <p className="texto-rotulo">Curadoria pedagógica</p>
+            <h2 id="qualidade-acervo-titulo" className="titulo-secao mt-1">
+              Qualidade do acervo
+            </h2>
+          </header>
+          <CardQualidadeAcervo qualidade={data.qualidadeAcervo} />
+        </section>
+      ) : null}
+
+      {carregandoDiagnostico ? (
+        <Skeleton className="mt-6 h-36 w-full rounded-xl" />
+      ) : diagnostico ? (
+        <section className="mt-6" aria-labelledby="diagnostico-operacional-titulo">
+          <CardDiagnosticoOperacional diagnostico={diagnostico} />
+        </section>
+      ) : null}
+
       <div className="mt-10 grid gap-6 lg:grid-cols-5">
         <section className="lg:col-span-2" aria-labelledby="insights-titulo">
           <header className="mb-4">
@@ -82,6 +148,235 @@ export default function PaginaDashboardAdmin() {
       </div>
     </div>
   );
+}
+
+function CardQualidadeAcervo({ qualidade }: { qualidade: QualidadeAcervo }) {
+  const status = [
+    { rotulo: "Publicadas", valor: qualidade.publicadas, classe: "bg-success" },
+    { rotulo: "Rascunhos", valor: qualidade.rascunhos, classe: "bg-muted-foreground" },
+    { rotulo: "Em revisão", valor: qualidade.emRevisao, classe: "bg-warning" },
+    { rotulo: "Arquivadas", valor: qualidade.arquivadas, classe: "bg-destructive" },
+  ];
+  const principais = qualidade.principaisAlertas.slice(0, 4);
+
+  return (
+    <div className="superficie-card grid gap-5 p-5 lg:grid-cols-[1.2fr_1fr]">
+      <div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <IndicadorQualidade
+            rotulo="Taxa média"
+            valor={formatarPorcentagem(qualidade.taxaMediaAcerto * 100)}
+            detalhe="acerto no acervo"
+          />
+          <IndicadorQualidade
+            rotulo="Com alerta"
+            valor={qualidade.comAlertas.toString()}
+            detalhe="pedem curadoria"
+            alerta={qualidade.comAlertas > 0}
+          />
+          <IndicadorQualidade
+            rotulo="Sem respostas"
+            valor={qualidade.semRespostas.toString()}
+            detalhe="sem amostra real"
+          />
+        </div>
+        <div className="mt-5 space-y-2">
+          {status.map((item) => {
+            const percentual =
+              qualidade.totalQuestoes > 0
+                ? Math.round((item.valor / qualidade.totalQuestoes) * 100)
+                : 0;
+            return (
+              <div key={item.rotulo}>
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">{item.rotulo}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                    {item.valor} · {percentual}%
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div className={cn("h-full rounded-full", item.classe)} style={{ width: `${percentual}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="rounded-lg border border-border bg-background/50 p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          Principais alertas
+        </p>
+        {principais.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Nenhum alerta crítico de curadoria na página atual do acervo.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {principais.map((alerta) => (
+              <li key={alerta.codigo} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-3 py-2">
+                <span className="text-sm text-foreground">{rotuloAlertaQuestao(alerta.codigo)}</span>
+                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                  {alerta.total}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CardDiagnosticoOperacional({
+  diagnostico,
+}: {
+  diagnostico: DiagnosticoOperacional;
+}) {
+  const totalPendencias =
+    diagnostico.pendencias.criticas.length + diagnostico.pendencias.avisos.length;
+  const statusOk = diagnostico.status === "ok";
+
+  return (
+    <div
+      className={cn(
+        "superficie-card grid gap-4 p-5 lg:grid-cols-[1fr_1.2fr]",
+        !statusOk && "border-warning/40",
+      )}
+    >
+      <div>
+        <p className="texto-rotulo">Operação</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h2
+            id="diagnostico-operacional-titulo"
+            className="titulo-secao"
+          >
+            Diagnóstico técnico
+          </h2>
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider",
+              statusOk
+                ? "bg-success-muted text-success"
+                : diagnostico.status === "critico"
+                  ? "bg-destructive-muted text-destructive"
+                  : "bg-warning-muted text-warning",
+            )}
+          >
+            {diagnostico.status}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <MiniDiagnostico
+            rotulo="Banco"
+            valor={diagnostico.operacional.banco.status}
+            detalhe={`${diagnostico.operacional.banco.latenciaMs} ms`}
+            alerta={diagnostico.operacional.banco.status !== "online"}
+          />
+          <MiniDiagnostico
+            rotulo="Schema"
+            valor={diagnostico.operacional.schema.ok ? "ok" : "falha"}
+            detalhe={`${diagnostico.operacional.schema.tabelasEncontradas}/${diagnostico.operacional.schema.tabelasEsperadas} tabelas`}
+            alerta={!diagnostico.operacional.schema.ok}
+          />
+          <MiniDiagnostico
+            rotulo="Pendências"
+            valor={String(totalPendencias)}
+            detalhe={`${diagnostico.pendencias.criticas.length} críticas`}
+            alerta={totalPendencias > 0}
+          />
+        </div>
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {diagnostico.ambiente.tipoBanco} · {diagnostico.ambiente.dialeto} ·{" "}
+          {diagnostico.ambiente.driver}
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-background/50 p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          Ações recomendadas
+        </p>
+        {diagnostico.recomendacoes.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Nenhuma recomendação operacional no momento.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {diagnostico.recomendacoes.slice(0, 4).map((recomendacao, i) => (
+              <li key={`${recomendacao}-${i}`} className="flex gap-2 text-sm text-muted-foreground">
+                <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                <span>{recomendacao}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MiniDiagnostico({
+  rotulo,
+  valor,
+  detalhe,
+  alerta = false,
+}: {
+  rotulo: string;
+  valor: string;
+  detalhe: string;
+  alerta?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-3",
+        alerta ? "border-warning/40 bg-warning-muted/30" : "border-border bg-background/50",
+      )}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        {rotulo}
+      </p>
+      <p className="mt-1 font-serif text-xl tracking-tight text-foreground">
+        {valor}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{detalhe}</p>
+    </div>
+  );
+}
+
+function IndicadorQualidade({
+  rotulo,
+  valor,
+  detalhe,
+  alerta = false,
+}: {
+  rotulo: string;
+  valor: string;
+  detalhe: string;
+  alerta?: boolean;
+}) {
+  return (
+    <div className={cn("rounded-lg border p-4", alerta ? "border-warning/40 bg-warning-muted/40" : "border-border bg-background/50")}>
+      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{rotulo}</p>
+      <p className="mt-2 font-serif text-2xl tracking-tight">{valor}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>
+    </div>
+  );
+}
+
+function rotuloAlertaQuestao(codigo: string): string {
+  const mapa: Record<string, string> = {
+    alternativas_insuficientes: "Alternativas insuficientes",
+    gabarito_invalido: "Gabarito inválido",
+    nunca_usada: "Nunca usada",
+    sem_respostas: "Sem respostas",
+    baixa_taxa_acerto: "Baixa taxa de acerto",
+    alta_taxa_acerto: "Alta taxa de acerto",
+    muitos_brancos: "Muitos brancos",
+    tempo_medio_alto: "Tempo médio alto",
+    distrator_nunca_escolhido: "Distrator nunca escolhido",
+    imagem_url_suspeita: "Imagem suspeita",
+  };
+  return mapa[codigo] ?? codigo.replaceAll("_", " ");
 }
 
 function GraficoTendencia({ dados }: { dados: PontoTendencia[] }) {

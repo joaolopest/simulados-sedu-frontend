@@ -30,6 +30,7 @@ from app.enums import PerfilUsuario, StatusQuestao, StatusSimulado
 from app.services import (
     auditoria_service,
     configuracao_service,
+    metricas_questoes_service,
     prova_avancada_service,
     questao_service,
     simulado_service,
@@ -54,6 +55,7 @@ from app.models import (
     Turma,
     Usuario,
     ProvaTemplate,
+    RevisaoQuestao,
 )
 
 # Status do simulado: enum/maiúsculo do banco -> code do frontend.
@@ -936,6 +938,161 @@ def _exigir_aluno_suporte_visivel(usuario: Usuario, aluno: Aluno) -> None:
 router = APIRouter(tags=["painel"])
 
 
+def _qualidade_acervo_admin(sessao: Session) -> dict:
+    status_linhas = sessao.execute(
+        select(Questao.status, func.count(Questao.id)).group_by(Questao.status)
+    ).all()
+    por_status = {
+        (status.value if hasattr(status, "value") else str(status)): int(total or 0)
+        for status, total in status_linhas
+    }
+    questoes = sessao.scalars(select(Questao).order_by(Questao.id)).all()
+    metricas = metricas_questoes_service.metricas_por_questoes(sessao, list(questoes))
+    total = len(questoes)
+    com_alertas = 0
+    sem_respostas = 0
+    soma_taxa = 0.0
+    alertas: dict[str, int] = {}
+    for item in metricas.values():
+        soma_taxa += float(item.get("taxa_acerto") or 0)
+        if int(item.get("total_respostas") or 0) == 0:
+            sem_respostas += 1
+        if item.get("alertas"):
+            com_alertas += 1
+        for alerta in item.get("alertas") or []:
+            alertas[alerta] = alertas.get(alerta, 0) + 1
+
+    alertas_ordenados = sorted(
+        [{"codigo": codigo, "total": total} for codigo, total in alertas.items()],
+        key=lambda item: item["total"],
+        reverse=True,
+    )
+    return {
+        "totalQuestoes": total,
+        "publicadas": por_status.get("publicada", 0),
+        "rascunhos": por_status.get("rascunho", 0),
+        "emRevisao": por_status.get("em_revisao", 0),
+        "arquivadas": por_status.get("arquivada", 0),
+        "comAlertas": com_alertas,
+        "semRespostas": sem_respostas,
+        "taxaMediaAcerto": round(soma_taxa / total, 4) if total else 0.0,
+        "principaisAlertas": alertas_ordenados[:5],
+    }
+
+
+def _insights_admin(qualidade: dict, alunos_em_risco: int, simulados_no_mes: int) -> list[dict]:
+    agora = datetime.now(timezone.utc).isoformat()
+    insights: list[dict] = []
+    if qualidade["comAlertas"] > 0:
+        insights.append(
+            {
+                "id": "qualidade-acervo",
+                "tipo": "qualidade",
+                "titulo": "Curadoria do acervo",
+                "texto": (
+                    f"{qualidade['comAlertas']} questões têm alerta de qualidade. "
+                    "Priorize gabarito, taxa de acerto extrema, brancos e distratores."
+                ),
+                "criadoEm": agora,
+            }
+        )
+    if qualidade["semRespostas"] > 0:
+        insights.append(
+            {
+                "id": "questoes-sem-amostra",
+                "tipo": "amostra",
+                "titulo": "Questões sem amostra real",
+                "texto": (
+                    f"{qualidade['semRespostas']} questões ainda não têm respostas. "
+                    "Use-as em provas piloto antes de tirar conclusões pedagógicas."
+                ),
+                "criadoEm": agora,
+            }
+        )
+    if alunos_em_risco > 0:
+        insights.append(
+            {
+                "id": "alunos-em-risco",
+                "tipo": "risco",
+                "titulo": "Atenção a alunos em risco",
+                "texto": (
+                    f"{alunos_em_risco} alunos estão abaixo do limiar de desempenho. "
+                    "Cruze turma, conteúdo e adaptações antes da próxima aplicação."
+                ),
+                "criadoEm": agora,
+            }
+        )
+    if simulados_no_mes == 0:
+        insights.append(
+            {
+                "id": "sem-aplicacoes-mes",
+                "tipo": "atividade",
+                "titulo": "Sem aplicações no mês",
+                "texto": "Não há simulados registrados neste mês. Verifique calendário, turmas e provas liberadas.",
+                "criadoEm": agora,
+            }
+        )
+    return insights
+
+
+def _insights_professor(qualidade: dict, provas: list[Simulado]) -> list[dict]:
+    agora = datetime.now(timezone.utc).isoformat()
+    insights: list[dict] = []
+    if qualidade["comAlertas"] > 0:
+        insights.append(
+            {
+                "id": "professor-questoes-alerta",
+                "tipo": "qualidade",
+                "titulo": "Revisar minhas questões",
+                "texto": (
+                    f"{qualidade['comAlertas']} das suas questões têm alerta de qualidade. "
+                    "Priorize gabarito, uso em prova, respostas em branco e taxa de acerto extrema."
+                ),
+                "criadoEm": agora,
+            }
+        )
+    if qualidade["rascunhos"] > 0:
+        insights.append(
+            {
+                "id": "professor-rascunhos",
+                "tipo": "autoria",
+                "titulo": "Rascunhos pendentes",
+                "texto": (
+                    f"Você tem {qualidade['rascunhos']} questão(ões) em rascunho. "
+                    "Finalize a revisão para liberar uso em novas provas."
+                ),
+                "criadoEm": agora,
+            }
+        )
+    em_curadoria = [
+        prova for prova in provas if _status_simulado_front(prova.status) == "em_curadoria"
+    ]
+    if em_curadoria:
+        insights.append(
+            {
+                "id": "professor-provas-curadoria",
+                "tipo": "provas",
+                "titulo": "Provas em curadoria",
+                "texto": (
+                    f"{len(em_curadoria)} prova(s) ainda aguardam validação/liberação. "
+                    "Confira quantidade mínima, turma, tempo e questões antes de aplicar."
+                ),
+                "criadoEm": agora,
+            }
+        )
+    if not insights:
+        insights.append(
+            {
+                "id": "professor-sem-alertas",
+                "tipo": "ok",
+                "titulo": "Fluxo em dia",
+                "texto": "Suas questões e provas não apresentam alertas prioritários no momento.",
+                "criadoEm": agora,
+            }
+        )
+    return insights
+
+
 @router.get("/admin/dashboard", dependencies=[Depends(so_admin)])
 def dashboard_admin(sessao: Session = Depends(get_session)) -> dict:
     total_questoes = sessao.scalar(select(func.count(Questao.id))) or 0
@@ -957,6 +1114,7 @@ def dashboard_admin(sessao: Session = Depends(get_session)) -> dict:
         sessao.scalar(select(func.count(Aluno.id)).where(Aluno.necessita_suporte.is_(True)))
         or 0
     )
+    qualidade_acervo = _qualidade_acervo_admin(sessao)
 
     # Tendência das últimas 12 semanas — contagens reais por janela semanal.
     tendencia = []
@@ -1031,13 +1189,94 @@ def dashboard_admin(sessao: Session = Depends(get_session)) -> dict:
         },
         "tendenciaSemanal": tendencia,
         "topEscolas": top[:10],
-        "insights": [],  # insights de IA não têm origem no banco
+        "qualidadeAcervo": qualidade_acervo,
+        "insights": _insights_admin(qualidade_acervo, alunos_em_risco, simulados_no_mes),
     }
 
 
 # ---------------------------------------------------------------------------
 # ALUNO (telas do próprio aluno — ownership pelo token)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/professor/dashboard", dependencies=[Depends(montadores_prova)])
+def dashboard_professor(
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    questoes = sessao.scalars(
+        select(Questao)
+        .where(Questao.criado_por_id == usuario.id)
+        .order_by(Questao.criada_em.desc(), Questao.id.desc())
+    ).all()
+    provas = sessao.scalars(
+        select(Simulado)
+        .where(Simulado.gestor_id == usuario.id)
+        .order_by(Simulado.criado_em.desc(), Simulado.id.desc())
+    ).all()
+    revisoes_pendentes = (
+        sessao.scalar(
+            select(func.count(RevisaoQuestao.id)).where(
+                RevisaoQuestao.solicitante_id == usuario.id,
+                RevisaoQuestao.status == "pendente",
+            )
+        )
+        or 0
+    )
+    metricas = metricas_questoes_service.metricas_por_questoes(sessao, list(questoes))
+    com_alertas = sum(1 for item in metricas.values() if item.get("alertas"))
+    sem_respostas = sum(
+        1 for item in metricas.values() if int(item.get("total_respostas") or 0) == 0
+    )
+    soma_taxa = sum(float(item.get("taxa_acerto") or 0) for item in metricas.values())
+    por_status = {
+        "publicada": 0,
+        "rascunho": 0,
+        "em_revisao": 0,
+        "arquivada": 0,
+    }
+    for questao in questoes:
+        chave = (
+            questao.status.value
+            if hasattr(questao.status, "value")
+            else str(questao.status)
+        )
+        por_status[chave] = por_status.get(chave, 0) + 1
+
+    qualidade = {
+        "totalQuestoes": len(questoes),
+        "publicadas": por_status.get("publicada", 0),
+        "rascunhos": por_status.get("rascunho", 0),
+        "emRevisao": por_status.get("em_revisao", 0),
+        "arquivadas": por_status.get("arquivada", 0),
+        "comAlertas": com_alertas,
+        "semRespostas": sem_respostas,
+        "taxaMediaAcerto": round(soma_taxa / len(questoes), 4) if questoes else 0.0,
+    }
+
+    provas_liberadas = [
+        prova for prova in provas if _status_simulado_front(prova.status) == "liberado"
+    ]
+    return {
+        "kpis": {
+            "minhasQuestoes": len(questoes),
+            "provasCriadas": len(provas),
+            "provasLiberadas": len(provas_liberadas),
+            "revisoesPendentes": int(revisoes_pendentes),
+            "alertasQualidade": com_alertas,
+        },
+        "qualidadeQuestoes": qualidade,
+        "provasRecentes": [
+            {
+                **_serializar_simulado(prova),
+                "totalQuestoes": len(prova.questoes),
+                "totalAlunos": len(prova.turma.alunos) if prova.turma else 0,
+            }
+            for prova in provas[:5]
+        ],
+        "questoesRecentes": [_serializar_questao(questao) for questao in questoes[:5]],
+        "insights": _insights_professor(qualidade, list(provas)),
+    }
 
 
 @router.get("/aluno/home")
@@ -3188,6 +3427,63 @@ def exportar_relatorio_simulado(
             "adaptacoes",
         ],
     )
+
+
+def _validar_item_importacao_questao(q: dict, sessao: Session) -> None:
+    if not isinstance(q, dict):
+        raise ValueError("item não é um objeto JSON")
+    enunciado = (q.get("enunciado") or "").strip()
+    if not enunciado:
+        raise ValueError("enunciado é obrigatório")
+    serie = labels.serie_nome(q.get("serie")) or ""
+    if not serie or sessao.scalar(select(Serie).where(Serie.nome == serie)) is None:
+        raise ValueError(f"série inexistente: '{q.get('serie')}'")
+    nivel = labels.MAP_NIVEL.get(q.get("nivel"), q.get("nivel", ""))
+    if not nivel or sessao.scalar(select(Nivel).where(Nivel.nome == nivel)) is None:
+        raise ValueError(f"nível inexistente: '{q.get('nivel')}'")
+    materia = labels.materia_nome(q.get("materia", ""))
+    if not materia:
+        raise ValueError("matéria é obrigatória")
+    if not (q.get("conteudo") or "").strip():
+        raise ValueError("conteúdo é obrigatório")
+    alternativas = q.get("alternativas") or []
+    if not isinstance(alternativas, list) or len(alternativas) < 2:
+        raise ValueError("informe ao menos 2 alternativas")
+    corretas = [a for a in alternativas if a.get("correta")]
+    if len(corretas) != 1:
+        raise ValueError("marque exatamente 1 alternativa como correta")
+    for indice, alt in enumerate(alternativas, start=1):
+        if not (alt.get("texto") or "").strip():
+            raise ValueError(f"alternativa {indice} está sem texto")
+
+
+@router.post("/admin/questoes/importar/validar", dependencies=[Depends(so_admin)])
+def validar_importacao_questoes(
+    corpo: dict,
+    _usuario: Usuario = Depends(so_admin),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    questoes = corpo.get("questoes") or []
+    rejeitadas = []
+    for i, q in enumerate(questoes, start=1):
+        try:
+            _validar_item_importacao_questao(q, sessao)
+        except ValueError as exc:
+            rejeitadas.append(
+                {
+                    "linha": i,
+                    "campo": "questao",
+                    "motivo": str(exc),
+                    "valor": (q.get("enunciado") or "")[:80] if isinstance(q, dict) else q,
+                }
+            )
+    total = int(corpo.get("totalLinhas") or len(questoes))
+    return {
+        "valido": len(rejeitadas) == 0,
+        "totalLinhas": total,
+        "validas": max(0, len(questoes) - len(rejeitadas)),
+        "rejeitadas": rejeitadas,
+    }
 
 
 @router.post("/admin/questoes/importar", dependencies=[Depends(so_admin)])

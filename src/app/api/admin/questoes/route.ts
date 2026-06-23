@@ -51,6 +51,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const resp = await backendFetch<ListaBackend>("/questoes", {
       token,
       query: {
+        escopo: url.searchParams.get("escopo") ?? undefined,
         busca: url.searchParams.get("busca") ?? undefined,
         // filtros vêm em code; o Python filtra por nome de exibição
         serie: url.searchParams.getAll("serie").map(serieParaNome),
