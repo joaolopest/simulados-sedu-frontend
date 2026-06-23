@@ -81,7 +81,7 @@ export function GraficoLinha({
 
   return (
     <motion.div
-      className={cn("w-full", className)}
+      className={cn("min-w-0 w-full", className)}
       style={{ height: altura }}
       role={ariaLabel ? "img" : undefined}
       aria-label={ariaLabel}
@@ -93,7 +93,7 @@ export function GraficoLinha({
         ease: [0.23, 1, 0.32, 1],
       }}
     >
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={altura}>
         <LineChart
           data={dados as Array<Record<string, unknown>>}
           margin={{ top: 8, right: 8, bottom: 4, left: 4 }}

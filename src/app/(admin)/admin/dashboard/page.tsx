@@ -86,9 +86,9 @@ export default function PaginaDashboardAdmin() {
 
 function GraficoTendencia({ dados }: { dados: PontoTendencia[] }) {
   return (
-    <div className="superficie-card p-5">
-      <div className="h-80 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+    <div className="superficie-card min-w-0 p-5">
+      <div className="h-80 min-h-80 min-w-0 w-full">
+        <ResponsiveContainer width="100%" height={320}>
           <LineChart data={dados} margin={{ top: 8, right: 16, bottom: 8, left: -8 }}>
             <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
             <XAxis dataKey="semana" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontFamily: "var(--font-mono)", fill: "var(--muted-foreground)" }} />

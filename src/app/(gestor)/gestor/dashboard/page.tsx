@@ -559,9 +559,12 @@ function GraficoMediasTurma({ dados }: { dados: DadoTurma[] }) {
   const altura = Math.max(220, ordenado.length * 44);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div style={{ width: "100%", height: altura }}>
-        <ResponsiveContainer width="100%" height="100%">
+    <div className="min-w-0 rounded-xl border border-border bg-card p-5">
+      <div
+        className="min-h-[220px] min-w-0"
+        style={{ width: "100%", height: `${altura}px` }}
+      >
+        <ResponsiveContainer width="100%" height={altura}>
           <BarChart
             data={ordenado}
             layout="vertical"
