@@ -6,7 +6,7 @@ from typing import Iterable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.enums import StatusQuestao
+from app.enums import StatusQuestao, StatusSimulado
 from app.models import (
     Aluno,
     Alternativa,
@@ -219,6 +219,20 @@ def criar_ou_obter_snapshot(
     return snapshot
 
 
+def garantir_snapshot_liberado(
+    sessao: Session,
+    *,
+    simulado: Simulado,
+    usuario: Usuario | None = None,
+) -> SimuladoSnapshot | None:
+    snapshot = snapshot_mais_recente(sessao, simulado.id)
+    if snapshot is not None:
+        return snapshot
+    if simulado.status not in (StatusSimulado.LIBERADO, StatusSimulado.FINALIZADO):
+        return None
+    return criar_ou_obter_snapshot(sessao, simulado=simulado, usuario=usuario)
+
+
 def tentativa_mais_recente(
     sessao: Session,
     *,
@@ -262,7 +276,7 @@ def obter_ou_criar_tentativa(
 
     ultima = tentativa_mais_recente(sessao, simulado_id=simulado.id, aluno_id=aluno.id)
     numero = 1 if ultima is None else ultima.numero + 1
-    snapshot = snapshot_mais_recente(sessao, simulado.id)
+    snapshot = garantir_snapshot_liberado(sessao, simulado=simulado)
     agora = datetime.now(timezone.utc)
     tentativa = SimuladoTentativa(
         simulado_id=simulado.id,
@@ -381,7 +395,7 @@ def reabrir_para_aluno(
         inscricao.inscrito_por_id = usuario.id
         inscricao.inscrito_em = datetime.now(timezone.utc)
 
-    snapshot = snapshot_mais_recente(sessao, simulado.id)
+    snapshot = garantir_snapshot_liberado(sessao, simulado=simulado, usuario=usuario)
     nova = SimuladoTentativa(
         simulado_id=simulado.id,
         aluno_id=aluno.id,

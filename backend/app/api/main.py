@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -42,7 +42,8 @@ from app.api.routers import (
     usuarios,
 )
 from app.database import engine
-from app.models import Aluno, Escola, Questao, Resposta, Simulado, Usuario
+from app.models import Usuario
+from app.services import auditoria_service, diagnostico_service
 
 logger = logging.getLogger("sedu.api")
 PREFIXO_BACKEND_VERCEL = "/_/backend"
@@ -248,21 +249,29 @@ def diagnostico_admin(
     _usuario: Usuario = Depends(so_admin),
     sessao: Session = Depends(get_session),
 ) -> dict:
-    """Resumo protegido para verificar se a base esta populada e coerente."""
-    contagens = {
-        "usuarios": sessao.scalar(select(func.count(Usuario.id))) or 0,
-        "alunos": sessao.scalar(select(func.count(Aluno.id))) or 0,
-        "escolas": sessao.scalar(select(func.count(Escola.id))) or 0,
-        "questoes": sessao.scalar(select(func.count(Questao.id))) or 0,
-        "simulados": sessao.scalar(select(func.count(Simulado.id))) or 0,
-        "respostas": sessao.scalar(select(func.count(Resposta.id))) or 0,
-    }
-    pendencias = [
-        nome for nome, total in contagens.items() if nome != "respostas" and total == 0
-    ]
-    return {
-        "status": "ok" if not pendencias else "atencao",
-        "contagens": contagens,
-        "pendencias": pendencias,
-        "banco": {"dialeto": engine.dialect.name},
-    }
+    """Diagnostico protegido da saude operacional e integridade do banco."""
+    return diagnostico_service.gerar_diagnostico(sessao)
+
+
+@app.post("/diagnostico/reparar-snapshots", tags=["status"], dependencies=[Depends(so_admin)])
+def reparar_snapshots_admin(
+    request: Request,
+    usuario: Usuario = Depends(so_admin),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    """Cria snapshots ausentes para provas legadas ja liberadas."""
+    resultado = diagnostico_service.reparar_snapshots_liberados(sessao, usuario)
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="reparar_snapshots",
+        alvo_tipo="diagnostico",
+        alvo_id="snapshots",
+        detalhes=(
+            f"Reparou {resultado['totalReparados']} snapshots ausentes; "
+            f"ignorou {resultado['totalIgnorados']} provas."
+        ),
+        request=request,
+    )
+    sessao.commit()
+    return resultado
