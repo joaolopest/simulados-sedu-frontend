@@ -6,10 +6,12 @@ from typing import Optional, Sequence
 
 from sqlalchemy.orm import Session
 
+from app.exceptions import DadosInvalidos, RegraNegocio
 from app.models import Questao
 from app.repositories import questao_repository
 
 LETRAS = "ABCDE"
+MAX_ALTERNATIVAS = len(LETRAS)
 
 
 @dataclass
@@ -41,6 +43,19 @@ class Prova:
 
     def gabarito_dict(self) -> dict[int, str]:
         return {q.ordem: q.gabarito for q in self.questoes}
+
+
+def _validar_distribuicao(distribuicao: dict[str, float]) -> None:
+    if not isinstance(distribuicao, dict) or not distribuicao:
+        raise DadosInvalidos("distribuição inválida")
+    for nivel, proporcao in distribuicao.items():
+        if not isinstance(proporcao, (int, float)) or proporcao < 0:
+            raise DadosInvalidos(f"proporção inválida para o nível '{nivel}'")
+    soma = sum(distribuicao.values())
+    if abs(soma - 1.0) > 0.01:
+        raise DadosInvalidos(
+            f"as proporções da distribuição devem somar 1.0 (somaram {soma:.2f})"
+        )
 
 
 def _selecionar_por_distribuicao(
@@ -83,8 +98,12 @@ def gerar_prova(
     adaptacoes: Optional[Sequence[str]] = None,
     seed: Optional[int] = None,
 ) -> Prova:
-    rng = random.Random(seed)
+    if quantidade < 1:
+        raise DadosInvalidos("a quantidade de questões deve ser pelo menos 1")
+    if distribuicao:
+        _validar_distribuicao(distribuicao)
 
+    rng = random.Random(seed)
     materias_filtro = list(materias) if materias else ([materia] if materia else [])
 
     candidatas = questao_repository.filtrar_questoes(
@@ -96,9 +115,10 @@ def gerar_prova(
     )
 
     if not candidatas:
-        raise ValueError(
+        raise RegraNegocio(
             "Nenhuma questão encontrada para os filtros informados. "
-            "Verifique série/matérias/conteúdos ou popule o banco."
+            "Verifique série/matérias/conteúdos ou popule o banco.",
+            codigo="sem_questoes",
         )
 
     if distribuicao:
@@ -114,10 +134,16 @@ def gerar_prova(
 
     for ordem, questao in enumerate(selecionadas, start=1):
         alternativas = list(questao.alternativas)
+        if len(alternativas) > MAX_ALTERNATIVAS:
+            raise RegraNegocio(
+                f"questão {questao.id} tem {len(alternativas)} alternativas; "
+                f"o máximo suportado é {MAX_ALTERNATIVAS}",
+                codigo="questao_inconsistente",
+            )
         rng.shuffle(alternativas)
 
         alts_prova: list[AlternativaProva] = []
-        gabarito = "?"
+        gabarito = None
         for letra, alt in zip(LETRAS, alternativas):
             alts_prova.append(
                 AlternativaProva(letra=letra, texto=alt.texto, alternativa_id=alt.id)
@@ -125,7 +151,15 @@ def gerar_prova(
             if alt.correta:
                 gabarito = letra
 
-        contagem_nivel[questao.nivel.nome] = contagem_nivel.get(questao.nivel.nome, 0) + 1
+        if gabarito is None:
+            raise RegraNegocio(
+                f"questão {questao.id} não possui alternativa correta válida",
+                codigo="questao_sem_gabarito",
+            )
+
+        contagem_nivel[questao.nivel.nome] = (
+            contagem_nivel.get(questao.nivel.nome, 0) + 1
+        )
 
         questoes_prova.append(
             QuestaoProva(
@@ -140,9 +174,7 @@ def gerar_prova(
             )
         )
 
-    materias_resultado = materias_filtro or sorted(
-        {q.materia for q in questoes_prova}
-    )
+    materias_resultado = materias_filtro or sorted({q.materia for q in questoes_prova})
 
     return Prova(
         serie=serie,

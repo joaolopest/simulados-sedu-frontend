@@ -1,9 +1,34 @@
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Alternativa, Conteudo, Materia, Nivel, Questao, Serie
+from app.exceptions import DadosInvalidos, NaoEncontrado
+from app.models import Alternativa, Conteudo, Materia, Questao
+from app.repositories import etiqueta_repository
+
+MAX_ALTERNATIVAS = 5
+
+
+def _validar_alternativas(alternativas: list[dict]) -> list[Alternativa]:
+    if not isinstance(alternativas, list) or len(alternativas) < 2:
+        raise DadosInvalidos("informe ao menos 2 alternativas")
+    if len(alternativas) > MAX_ALTERNATIVAS:
+        raise DadosInvalidos(
+            f"o máximo de alternativas por questão é {MAX_ALTERNATIVAS}"
+        )
+    corretas = [a for a in alternativas if a.get("correta")]
+    if len(corretas) != 1:
+        raise DadosInvalidos("marque exatamente 1 alternativa como correta")
+
+    objs: list[Alternativa] = []
+    for i, a in enumerate(alternativas, start=1):
+        texto = (a.get("texto") or "").strip()
+        if not texto:
+            raise DadosInvalidos(f"alternativa {i} está sem texto")
+        objs.append(
+            Alternativa(texto=texto, correta=bool(a.get("correta")), ordem_original=i)
+        )
+    return objs
 
 
 def cadastrar_questao(
@@ -20,17 +45,19 @@ def cadastrar_questao(
 ) -> Questao:
     enunciado = (enunciado or "").strip()
     if not enunciado:
-        raise ValueError("enunciado é obrigatório")
+        raise DadosInvalidos("enunciado é obrigatório")
 
-    serie_obj = sessao.scalar(select(Serie).where(Serie.nome == serie))
+    serie_obj = etiqueta_repository.serie_por_nome(sessao, serie)
     if serie_obj is None:
-        raise ValueError(f"série inexistente: '{serie}'")
+        raise NaoEncontrado(f"série inexistente: '{serie}'")
 
-    nivel_obj = sessao.scalar(select(Nivel).where(Nivel.nome == nivel))
+    nivel_obj = etiqueta_repository.nivel_por_nome(sessao, nivel)
     if nivel_obj is None:
-        raise ValueError(f"nível inexistente: '{nivel}'")
+        raise NaoEncontrado(f"nível inexistente: '{nivel}'")
 
-    materia_obj = sessao.scalar(select(Materia).where(Materia.nome == materia))
+    objs_alt = _validar_alternativas(alternativas)
+
+    materia_obj = etiqueta_repository.materia_por_nome(sessao, materia)
     if materia_obj is None:
         materia_obj = Materia(nome=materia.strip())
         sessao.add(materia_obj)
@@ -38,32 +65,14 @@ def cadastrar_questao(
 
     conteudo_nome = (conteudo or "").strip()
     if not conteudo_nome:
-        raise ValueError("conteúdo é obrigatório")
-    conteudo_obj = sessao.scalar(
-        select(Conteudo).where(
-            Conteudo.nome == conteudo_nome,
-            Conteudo.materia_id == materia_obj.id,
-        )
+        raise DadosInvalidos("conteúdo é obrigatório")
+    conteudo_obj = etiqueta_repository.conteudo_por_nome(
+        sessao, conteudo_nome, materia_obj.id
     )
     if conteudo_obj is None:
         conteudo_obj = Conteudo(nome=conteudo_nome, materia=materia_obj)
         sessao.add(conteudo_obj)
         sessao.flush()
-
-    if not isinstance(alternativas, list) or len(alternativas) < 2:
-        raise ValueError("informe ao menos 2 alternativas")
-    corretas = [a for a in alternativas if a.get("correta")]
-    if len(corretas) != 1:
-        raise ValueError("marque exatamente 1 alternativa como correta")
-
-    objs_alt: list[Alternativa] = []
-    for i, a in enumerate(alternativas, start=1):
-        texto = (a.get("texto") or "").strip()
-        if not texto:
-            raise ValueError(f"alternativa {i} está sem texto")
-        objs_alt.append(
-            Alternativa(texto=texto, correta=bool(a.get("correta")), ordem_original=i)
-        )
 
     questao = Questao(
         enunciado=enunciado,

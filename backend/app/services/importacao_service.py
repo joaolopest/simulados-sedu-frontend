@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Alternativa, Conteudo, Materia, Nivel, Questao, Serie
+from app.exceptions import DadosInvalidos
+from app.models import Alternativa, Questao
+from app.repositories import etiqueta_repository
 
 CAMPOS_ETIQUETA = ("serie", "materia", "conteudo", "nivel")
+MAX_ALTERNATIVAS = 5
 
 
 @dataclass
@@ -23,10 +25,6 @@ class RelatorioImportacao:
     erros: list[ErroImportacao] = field(default_factory=list)
 
 
-def _buscar(sessao: Session, modelo, nome: str):
-    return sessao.scalar(select(modelo).where(modelo.nome == nome))
-
-
 def _validar_e_construir(sessao: Session, q: dict) -> Questao:
     if not isinstance(q, dict):
         raise ValueError("item não é um objeto JSON")
@@ -40,23 +38,20 @@ def _validar_e_construir(sessao: Session, q: dict) -> Questao:
     if faltando:
         raise ValueError(f"etiqueta(s) obrigatória(s) ausente(s): {', '.join(faltando)}")
 
-    serie = _buscar(sessao, Serie, etiquetas["serie"])
+    serie = etiqueta_repository.serie_por_nome(sessao, etiquetas["serie"])
     if serie is None:
         raise ValueError(f"serie inexistente: '{etiquetas['serie']}'")
 
-    materia = _buscar(sessao, Materia, etiquetas["materia"])
+    materia = etiqueta_repository.materia_por_nome(sessao, etiquetas["materia"])
     if materia is None:
         raise ValueError(f"materia inexistente: '{etiquetas['materia']}'")
 
-    nivel = _buscar(sessao, Nivel, etiquetas["nivel"])
+    nivel = etiqueta_repository.nivel_por_nome(sessao, etiquetas["nivel"])
     if nivel is None:
         raise ValueError(f"nivel inexistente: '{etiquetas['nivel']}'")
 
-    conteudo = sessao.scalar(
-        select(Conteudo).where(
-            Conteudo.nome == etiquetas["conteudo"],
-            Conteudo.materia_id == materia.id,
-        )
+    conteudo = etiqueta_repository.conteudo_por_nome(
+        sessao, etiquetas["conteudo"], materia.id
     )
     if conteudo is None:
         raise ValueError(
@@ -67,6 +62,10 @@ def _validar_e_construir(sessao: Session, q: dict) -> Questao:
     alternativas_raw = q.get("alternativas") or []
     if not isinstance(alternativas_raw, list) or len(alternativas_raw) < 2:
         raise ValueError("a questão precisa de pelo menos 2 alternativas")
+    if len(alternativas_raw) > MAX_ALTERNATIVAS:
+        raise ValueError(
+            f"a questão excede o máximo de {MAX_ALTERNATIVAS} alternativas"
+        )
 
     corretas = [a for a in alternativas_raw if a.get("correta")]
     if len(corretas) == 0:
@@ -104,22 +103,9 @@ def _validar_e_construir(sessao: Session, q: dict) -> Questao:
 
 
 def importar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
-    return _processar_questoes(sessao, payload, persistir=True)
-
-
-def validar_questoes(sessao: Session, payload: dict) -> RelatorioImportacao:
-    return _processar_questoes(sessao, payload, persistir=False)
-
-
-def _processar_questoes(
-    sessao: Session,
-    payload: dict,
-    *,
-    persistir: bool,
-) -> RelatorioImportacao:
     questoes = payload.get("questoes")
     if not isinstance(questoes, list):
-        raise ValueError(
+        raise DadosInvalidos(
             "payload inválido: esperado um objeto com a chave 'questoes' (lista)"
         )
 
@@ -136,8 +122,7 @@ def _processar_questoes(
                 relatorio.erros.append(ErroImportacao(linha=indice, motivo=str(exc)))
 
     if validas:
-        if persistir:
-            sessao.add_all(validas)
-            sessao.commit()
+        sessao.add_all(validas)
+        sessao.commit()
 
     return relatorio

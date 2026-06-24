@@ -8,36 +8,15 @@ import time
 
 import jwt
 
+from app.config import settings
+
 ALGORITMO = "HS256"
-HORAS_VALIDADE = 8
-CHAVE_DEV = "sedu-dev-secret-local-nao-use-em-producao"
-
-
-def _ambiente_producao() -> bool:
-    ambiente = (
-        os.environ.get("APP_ENV")
-        or os.environ.get("ENVIRONMENT")
-        or os.environ.get("VERCEL_ENV")
-        or ""
-    ).lower()
-    return ambiente in {"prod", "production"} or bool(os.environ.get("VERCEL"))
-
-
-def _carregar_chave_secreta() -> str:
-    chave = os.environ.get("SEDU_JWT_SECRET")
-    if chave:
-        return chave
-    if _ambiente_producao():
-        raise RuntimeError("SEDU_JWT_SECRET precisa estar configurado em producao.")
-    return CHAVE_DEV
-
-
-CHAVE_SECRETA = _carregar_chave_secreta()
+_ITERACOES = 100_000
 
 
 def gerar_hash_senha(senha: str) -> str:
     salt = os.urandom(16)
-    derivada = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), salt, 100_000)
+    derivada = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), salt, _ITERACOES)
     return base64.b64encode(salt + derivada).decode("ascii")
 
 
@@ -46,8 +25,10 @@ def verificar_senha(senha: str, hash_armazenado: str) -> bool:
         dados = base64.b64decode(hash_armazenado.encode("ascii"))
     except Exception:
         return False
+    if len(dados) <= 16:
+        return False
     salt, derivada = dados[:16], dados[16:]
-    nova = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), salt, 100_000)
+    nova = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), salt, _ITERACOES)
     return hmac.compare_digest(derivada, nova)
 
 
@@ -57,22 +38,10 @@ def criar_token(usuario_id: int, perfil: str) -> str:
         "sub": str(usuario_id),
         "perfil": perfil,
         "iat": agora,
-        "exp": agora + HORAS_VALIDADE * 3600,
+        "exp": agora + settings.jwt_expira_horas * 3600,
     }
-    return jwt.encode(payload, CHAVE_SECRETA, algorithm=ALGORITMO)
+    return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITMO)
 
 
 def decodificar_token(token: str) -> dict:
-    return jwt.decode(token, CHAVE_SECRETA, algorithms=[ALGORITMO])
-
-
-def criar_token_reset(usuario_id: int, horas: int = 1) -> str:
-    """Token curto pra redefinição de senha (claim tipo='reset')."""
-    agora = int(time.time())
-    payload = {
-        "sub": str(usuario_id),
-        "tipo": "reset",
-        "iat": agora,
-        "exp": agora + horas * 3600,
-    }
-    return jwt.encode(payload, CHAVE_SECRETA, algorithm=ALGORITMO)
+    return jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITMO])

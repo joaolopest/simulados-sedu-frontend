@@ -1,18 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session
-from app.models import Usuario
-from app.services import auditoria_service, importacao_service
+from app.api.deps import get_session, require_gestor
+from app.services import importacao_service
 
-from app.api.permissoes import so_admin
-
-router = APIRouter(
-    prefix="/questoes",
-    tags=["importacao"],
-    dependencies=[Depends(so_admin)],
-)
+router = APIRouter(prefix="/questoes", tags=["importacao"])
 
 
 class ImportarQuestoesRequest(BaseModel):
@@ -43,56 +36,18 @@ class ImportarQuestoesRequest(BaseModel):
     )
 
 
-@router.post("/import", summary="Importar questões em lote (JSON da SEDUC)")
+@router.post(
+    "/import",
+    summary="Importar questões em lote (JSON da SEDUC)",
+    dependencies=[Depends(require_gestor)],
+)
 def importar_questoes(
     req: ImportarQuestoesRequest,
-    request: Request,
-    usuario: Usuario = Depends(so_admin),
     sessao: Session = Depends(get_session),
 ) -> dict:
-    try:
-        relatorio = importacao_service.importar_questoes(
-            sessao, {"questoes": req.questoes}
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    auditoria_service.registrar(
-        sessao,
-        usuario=usuario,
-        tipo="importacao",
-        alvo_tipo="questao",
-        detalhes=(
-            f"Importou questoes: {relatorio.importadas} aceitas, "
-            f"{relatorio.rejeitadas} rejeitadas."
-        ),
-        request=request,
-    )
-    sessao.commit()
-
+    relatorio = importacao_service.importar_questoes(sessao, {"questoes": req.questoes})
     return {
         "importadas": relatorio.importadas,
-        "rejeitadas": relatorio.rejeitadas,
-        "erros": [{"linha": e.linha, "motivo": e.motivo} for e in relatorio.erros],
-    }
-
-
-@router.post("/import/validar", summary="Validar lote de questões sem gravar")
-def validar_importacao_questoes(
-    req: ImportarQuestoesRequest,
-    _usuario: Usuario = Depends(so_admin),
-    sessao: Session = Depends(get_session),
-) -> dict:
-    try:
-        relatorio = importacao_service.validar_questoes(
-            sessao, {"questoes": req.questoes}
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return {
-        "valido": relatorio.rejeitadas == 0,
-        "validas": relatorio.importadas,
         "rejeitadas": relatorio.rejeitadas,
         "erros": [{"linha": e.linha, "motivo": e.motivo} for e in relatorio.erros],
     }

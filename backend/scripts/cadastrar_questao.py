@@ -6,16 +6,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import select  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
-from app.enums import StatusQuestao  # noqa: E402
 from app.models import (  # noqa: E402
     Alternativa,
     Conteudo,
-    Escola,
     Materia,
     Nivel,
     Questao,
     Serie,
-    Usuario,
 )
 
 
@@ -147,8 +144,6 @@ def main() -> None:
         adaptacoes = [a.strip() for a in adaptacoes_raw.split(",") if a.strip()]
 
         alternativas = _ler_alternativas()
-        autor = sessao.scalar(select(Usuario).where(Usuario.email == "admin@sedu.se.gov.br"))
-        escola = sessao.scalar(select(Escola).order_by(Escola.id))
 
         questao = Questao(
             enunciado=enunciado,
@@ -158,9 +153,6 @@ def main() -> None:
             conteudo=conteudo,
             nivel=nivel,
             adaptacoes=adaptacoes,
-            status=StatusQuestao.PUBLICADA,
-            criado_por_id=autor.id if autor else None,
-            escola_id=escola.id if escola else None,
             alternativas=alternativas,
         )
         sessao.add(questao)

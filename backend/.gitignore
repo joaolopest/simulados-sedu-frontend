@@ -20,6 +20,9 @@ __pycache__/
 # IDE
 .idea/
 
+# Alembic: versões ficam versionadas; cache local não
+# (nenhum padrão necessário aqui por enquanto)
+
 # Sistema
 .DS_Store
 Thumbs.db

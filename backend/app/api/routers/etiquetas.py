@@ -1,52 +1,39 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session
-from app.models import Conteudo, Materia, Nivel, Serie
-
-from app.api.permissoes import autenticado
+from app.api.deps import get_session, obter_usuario_atual
+from app.repositories import etiqueta_repository
 
 router = APIRouter(
     prefix="/etiquetas",
     tags=["etiquetas"],
-    dependencies=[Depends(autenticado)],
+    dependencies=[Depends(obter_usuario_atual)],
 )
 
 
-@router.get("/series")
+@router.get("/series", summary="Listar séries")
 def listar_series(sessao: Session = Depends(get_session)) -> list[dict]:
-    return [
-        {"id": s.id, "nome": s.nome}
-        for s in sessao.scalars(select(Serie).order_by(Serie.id))
-    ]
+    return [{"id": s.id, "nome": s.nome} for s in etiqueta_repository.listar_series(sessao)]
 
 
-@router.get("/materias")
+@router.get("/materias", summary="Listar matérias")
 def listar_materias(sessao: Session = Depends(get_session)) -> list[dict]:
     return [
-        {"id": m.id, "nome": m.nome}
-        for m in sessao.scalars(select(Materia).order_by(Materia.nome))
+        {"id": m.id, "nome": m.nome} for m in etiqueta_repository.listar_materias(sessao)
     ]
 
 
-@router.get("/niveis")
+@router.get("/niveis", summary="Listar níveis de dificuldade")
 def listar_niveis(sessao: Session = Depends(get_session)) -> list[dict]:
-    return [
-        {"id": n.id, "nome": n.nome}
-        for n in sessao.scalars(select(Nivel).order_by(Nivel.id))
-    ]
+    return [{"id": n.id, "nome": n.nome} for n in etiqueta_repository.listar_niveis(sessao)]
 
 
-@router.get("/conteudos")
+@router.get("/conteudos", summary="Listar conteúdos (filtra por matéria opcional)")
 def listar_conteudos(
     materia: str | None = None,
     sessao: Session = Depends(get_session),
 ) -> list[dict]:
-    stmt = select(Conteudo).join(Materia).order_by(Conteudo.nome)
-    if materia:
-        stmt = stmt.where(Materia.nome == materia)
     return [
         {"id": c.id, "nome": c.nome, "materia": c.materia.nome}
-        for c in sessao.scalars(stmt)
+        for c in etiqueta_repository.listar_conteudos(sessao, materia=materia)
     ]
