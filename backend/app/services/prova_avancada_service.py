@@ -275,6 +275,8 @@ def obter_ou_criar_tentativa(
         return existente
 
     ultima = tentativa_mais_recente(sessao, simulado_id=simulado.id, aluno_id=aluno.id)
+    if ultima is not None and ultima.status == STATUS_TENTATIVA_FINALIZADA:
+        raise ValueError("Tentativa ja finalizada. Solicite reabertura para responder novamente.")
     numero = 1 if ultima is None else ultima.numero + 1
     snapshot = garantir_snapshot_liberado(sessao, simulado=simulado)
     agora = datetime.now(timezone.utc)

@@ -909,9 +909,8 @@ class SimuladoTentativa(Base):
 class Resposta(Base):
     __tablename__ = "respostas"
     __table_args__ = (
-        UniqueConstraint(
-            "aluno_id", "simulado_id", "questao_id", name="uq_resposta_unica",
-        ),
+        Index("ix_respostas_tentativa_questao", "tentativa_id", "questao_id"),
+        Index("ix_respostas_aluno_simulado", "aluno_id", "simulado_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1034,6 +1033,12 @@ class Notificacao(Base):
 
 class AcaoAuditoria(Base):
     __tablename__ = "acoes_auditoria"
+    __table_args__ = (
+        Index("ix_acoes_auditoria_ocorrido", "ocorrido_em"),
+        Index("ix_acoes_auditoria_tipo_ocorrido", "tipo", "ocorrido_em"),
+        Index("ix_acoes_auditoria_usuario_ocorrido", "usuario_id", "ocorrido_em"),
+        Index("ix_acoes_auditoria_alvo", "alvo_tipo", "alvo_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tipo: Mapped[str] = mapped_column(String(40), nullable=False)

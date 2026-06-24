@@ -15,6 +15,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const pagina = url.searchParams.get("pagina") ?? "1";
   const porPagina = url.searchParams.get("porPagina") ?? "30";
   const usuarioId = url.searchParams.get("usuarioId");
+  const alvoId = url.searchParams.get("alvoId");
 
   try {
     const resp = await backendFetch<ListaBackend>("/auditoria", {
@@ -23,6 +24,11 @@ export async function GET(request: Request): Promise<NextResponse> {
         tipo: url.searchParams.getAll("tipo"),
         // backend filtra por id int; só repassa se for numérico
         usuario_id: usuarioId && /^\d+$/.test(usuarioId) ? usuarioId : undefined,
+        alvo_tipo: url.searchParams.get("alvoTipo") ?? undefined,
+        alvo_id: alvoId ?? undefined,
+        busca: url.searchParams.get("busca") ?? undefined,
+        desde: url.searchParams.get("desde") ?? undefined,
+        ate: url.searchParams.get("ate") ?? undefined,
         pagina,
         por_pagina: porPagina,
       },

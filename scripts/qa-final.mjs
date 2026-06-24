@@ -255,8 +255,10 @@ async function verificarBackend() {
       "/questoes",
       "/gestor/simulados",
       "/gestor/simulados/{simulado_id}/montar",
+      "/gestor/simulados/{simulado_id}/duplicar",
       "/gestor/simulados/{simulado_id}/alunos/{aluno_id}/reabrir",
       "/aluno/simulado/{simulado_id}/finalizar",
+      "/questoes/metricas",
       "/diagnostico",
     ];
     const ausentes = obrigatorios.filter((path) => !paths[path]);

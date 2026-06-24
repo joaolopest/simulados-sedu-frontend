@@ -10,6 +10,7 @@ import {
   BarChart3,
   Calendar,
   Clock,
+  Copy,
   Eye,
   FileText,
   Loader2,
@@ -29,6 +30,7 @@ import {
   useGestorSimulados,
   useLiberarSimulado,
 } from "@/hooks/api/use-gestor";
+import { useDuplicarProva } from "@/hooks/api/use-provas";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -345,6 +347,7 @@ function CardSimulado({
   const acao = acaoSecundaria(simulado, baseProvas, novaProvaHref);
   const liberar = useLiberarSimulado();
   const remover = useRemoverSimulado();
+  const duplicar = useDuplicarProva();
   const podeLiberar = status === "em_curadoria";
   const preservaResultado =
     status === "liberado" ||
@@ -394,6 +397,15 @@ function CardSimulado({
       setConfirmacaoRemocaoAberta(false);
     } catch {
       toast.error("Não foi possível concluir a ação.");
+    }
+  }
+
+  async function duplicarSimulado() {
+    try {
+      await duplicar.mutateAsync({ simuladoId: simulado.id });
+      toast.success("Copia criada como rascunho.");
+    } catch {
+      toast.error("Nao foi possivel duplicar a prova.");
     }
   }
 
@@ -544,6 +556,17 @@ function CardSimulado({
                   </Link>
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                onClick={duplicarSimulado}
+                disabled={duplicar.isPending}
+              >
+                {duplicar.isPending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Copy className="size-4" aria-hidden />
+                )}
+                Duplicar prova
+              </DropdownMenuItem>
               {podeLiberar && (
                 <DropdownMenuItem
                   onClick={() => liberar.mutate(simulado.id)}

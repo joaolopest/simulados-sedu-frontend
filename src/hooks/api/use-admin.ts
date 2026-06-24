@@ -501,6 +501,9 @@ export interface AcaoAuditoriaEnriquecida extends AcaoAuditoria {
 export interface FiltrosAuditoria {
   tipo?: AcaoAuditoria["tipo"][];
   usuarioId?: string;
+  alvoTipo?: string;
+  alvoId?: string;
+  busca?: string;
   desde?: string;
   ate?: string;
   pagina?: number;
@@ -511,6 +514,9 @@ export function useAdminAuditoria(filtros?: FiltrosAuditoria) {
   const params = new URLSearchParams();
   filtros?.tipo?.forEach((t) => params.append("tipo", t));
   if (filtros?.usuarioId) params.set("usuarioId", filtros.usuarioId);
+  if (filtros?.alvoTipo) params.set("alvoTipo", filtros.alvoTipo);
+  if (filtros?.alvoId) params.set("alvoId", filtros.alvoId);
+  if (filtros?.busca) params.set("busca", filtros.busca);
   if (filtros?.desde) params.set("desde", filtros.desde);
   if (filtros?.ate) params.set("ate", filtros.ate);
   if (filtros?.pagina) params.set("pagina", String(filtros.pagina));

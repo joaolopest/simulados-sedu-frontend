@@ -249,18 +249,24 @@ export function ConstrutorProva() {
         quantidadeQuestoes: quantidade,
         tempoLimiteMinutos,
         evitarQuestoesJaUsadas: false,
+        excluirQuestaoIds: selecionadas.map((q) => q.id),
+        seed: `${Date.now()}-${selecionadas.length}`,
       });
       setNome((atual) => atual || nomeProva);
+      let totalAdicionadas = 0;
       setSelecionadas((atuais) => {
         const idsAtuais = new Set(atuais.map((q) => q.id));
         const novas = resposta.questoesSelecionadas.filter(
           (q) => !idsAtuais.has(q.id),
         );
+        totalAdicionadas = novas.length;
         return [...atuais, ...novas].slice(0, quantidadeMaxima);
       });
-      toast.success(
-        `${resposta.questoesSelecionadas.length} questões selecionadas pelo banco`,
-      );
+      if (totalAdicionadas > 0) {
+        toast.success(`${totalAdicionadas} questoes novas adicionadas a prova`);
+      } else {
+        toast.warning("Nenhuma questao nova encontrada para esses filtros.");
+      }
       for (const aviso of resposta.avisos ?? []) {
         toast.message(aviso);
       }

@@ -9,6 +9,7 @@ import {
   Filter,
   LogIn,
   LogOut,
+  Search,
   Send,
   Sparkles,
   Upload,
@@ -140,16 +141,18 @@ const TOM_PILL: Record<ConfigTipo["tom"], string> = {
 
 export default function PaginaAuditoria() {
   const [tiposSelecionados, setTiposSelecionados] = useState<TipoAcao[]>([]);
+  const [busca, setBusca] = useState<string>("");
   const [desde, setDesde] = useState<string>("");
   const [ate, setAte] = useState<string>("");
 
   const filtros = useMemo<FiltrosAuditoria>(() => {
     const f: FiltrosAuditoria = { porPagina: 200 };
     if (tiposSelecionados.length > 0) f.tipo = tiposSelecionados;
+    if (busca.trim()) f.busca = busca.trim();
     if (desde) f.desde = desde;
     if (ate) f.ate = ate;
     return f;
-  }, [tiposSelecionados, desde, ate]);
+  }, [tiposSelecionados, busca, desde, ate]);
 
   const { data, isLoading, isError, refetch } = useAdminAuditoria(filtros);
 
@@ -164,7 +167,7 @@ export default function PaginaAuditoria() {
   const grupos = useMemo(() => agruparPorDia(dadosOrdenados), [dadosOrdenados]);
 
   const total = data?.meta?.total ?? dadosOrdenados.length;
-  const temFiltros = tiposSelecionados.length > 0 || desde !== "" || ate !== "";
+  const temFiltros = tiposSelecionados.length > 0 || busca.trim() !== "" || desde !== "" || ate !== "";
 
   function alternarTipo(tipo: TipoAcao) {
     setTiposSelecionados((atual) =>
@@ -176,6 +179,7 @@ export default function PaginaAuditoria() {
 
   function limparFiltros() {
     setTiposSelecionados([]);
+    setBusca("");
     setDesde("");
     setAte("");
   }
@@ -258,6 +262,17 @@ export default function PaginaAuditoria() {
 
         {/* Datas */}
         <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex min-w-64 flex-1 items-center gap-2 rounded-md border border-border bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <Search className="size-3" aria-hidden />
+            <input
+              type="search"
+              value={busca}
+              onChange={(evento) => setBusca(evento.target.value)}
+              placeholder="Buscar tipo, usuario, alvo ou detalhe"
+              className="min-w-0 flex-1 bg-transparent py-0.5 text-xs normal-case tracking-normal text-foreground placeholder:text-muted-foreground focus:outline-none"
+              aria-label="Buscar na auditoria"
+            />
+          </label>
           <label className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             Desde
             <input

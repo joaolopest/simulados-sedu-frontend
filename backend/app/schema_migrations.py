@@ -293,6 +293,40 @@ def aplicar_migracoes_idempotentes(engine: Engine) -> None:
         ALTER COLUMN alternativa_id DROP NOT NULL
         """,
         """
+        ALTER TABLE respostas
+        DROP CONSTRAINT IF EXISTS uq_resposta_unica
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_resposta_tentativa_questao
+        ON respostas (tentativa_id, questao_id)
+        WHERE tentativa_id IS NOT NULL
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_resposta_legacy_unica
+        ON respostas (aluno_id, simulado_id, questao_id)
+        WHERE tentativa_id IS NULL
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_respostas_aluno_simulado
+        ON respostas (aluno_id, simulado_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_acoes_auditoria_ocorrido
+        ON acoes_auditoria (ocorrido_em)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_acoes_auditoria_tipo_ocorrido
+        ON acoes_auditoria (tipo, ocorrido_em)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_acoes_auditoria_usuario_ocorrido
+        ON acoes_auditoria (usuario_id, ocorrido_em)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_acoes_auditoria_alvo
+        ON acoes_auditoria (alvo_tipo, alvo_id)
+        """,
+        """
         CREATE TABLE IF NOT EXISTS resultados_simulado (
             id SERIAL PRIMARY KEY,
             simulado_id INTEGER NOT NULL REFERENCES simulados(id) ON DELETE CASCADE,

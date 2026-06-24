@@ -24,6 +24,8 @@ export interface ParametrosGeracaoProva {
   tempoLimiteMinutos?: number;
   evitarQuestoesJaUsadas?: boolean;
   comImagem?: boolean;
+  excluirQuestaoIds?: string[];
+  seed?: string;
 }
 
 export interface RespostaGeracaoProva {
@@ -134,6 +136,22 @@ export function useLiberarProva() {
       criar<{ id: string; status: string; liberadoEm: string }>(
         `/provas/${id}/liberar`,
         {},
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["provas"] });
+      qc.invalidateQueries({ queryKey: ["gestor", "simulados"] });
+      qc.invalidateQueries({ queryKey: ["gestor", "dashboard"] });
+    },
+  });
+}
+
+export function useDuplicarProva() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { simuladoId: string; nome?: string }) =>
+      criar<{ simulado: Simulado; origemId: string }>(
+        `/provas/${vars.simuladoId}/duplicar`,
+        vars.nome ? { nome: vars.nome } : {},
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["provas"] });

@@ -108,7 +108,11 @@ def plano_reforco_aluno(sessao: Session, aluno: Aluno) -> dict:
     respostas = sessao.scalars(
         select(Resposta).where(Resposta.aluno_id == aluno.id)
     ).all()
-    problemas = [r for r in respostas if r.status in ("errada", "em_branco")]
+    problemas = [
+        r
+        for r in respostas
+        if r.status == "em_branco" or (r.status == "respondida" and not r.correta)
+    ]
     por_conteudo: Counter[str] = Counter()
     por_competencia: Counter[str] = Counter()
     for resposta in problemas:

@@ -17,7 +17,7 @@ from app.models import (
     SimuladoQuestao,
 )
 from app.repositories import questao_repository
-from app.services import prova_service
+from app.services import prova_avancada_service, prova_service
 
 LETRAS = "ABCDE"
 
@@ -254,8 +254,18 @@ def registrar_resposta(
     if simulado.status != StatusSimulado.LIBERADO:
         raise ValueError("o simulado não está liberado para respostas")
 
+    aluno = sessao.get(Aluno, aluno_id)
+    if aluno is None:
+        raise ValueError("aluno nao encontrado")
+
     if not aluno_tem_acesso(sessao, aluno_id=aluno_id, simulado=simulado):
         raise ValueError("aluno nao esta inscrito neste simulado")
+
+    ultima = prova_avancada_service.tentativa_mais_recente(
+        sessao, simulado_id=simulado_id, aluno_id=aluno_id,
+    )
+    if ultima is not None and ultima.status == prova_avancada_service.STATUS_TENTATIVA_FINALIZADA:
+        raise ValueError("este simulado ja foi finalizado; solicite reabertura")
 
     pertence = sessao.scalar(
         select(SimuladoQuestao).where(
@@ -270,25 +280,32 @@ def registrar_resposta(
     if alternativa is None or alternativa.questao_id != questao_id:
         raise ValueError("alternativa inválida para a questão")
 
+    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+        sessao, simulado=simulado, aluno=aluno,
+    )
+    prova_avancada_service.marcar_tentativa_iniciada(tentativa)
+
     resposta = sessao.scalar(
         select(Resposta).where(
-            Resposta.aluno_id == aluno_id,
-            Resposta.simulado_id == simulado_id,
+            Resposta.tentativa_id == tentativa.id,
             Resposta.questao_id == questao_id,
         )
     )
     if resposta is None:
         resposta = Resposta(
+            tentativa_id=tentativa.id,
             aluno_id=aluno_id,
             simulado_id=simulado_id,
             questao_id=questao_id,
             alternativa_id=alternativa_id,
             correta=alternativa.correta,
+            status="respondida",
         )
         sessao.add(resposta)
     else:
         resposta.alternativa_id = alternativa_id
         resposta.correta = alternativa.correta
+        resposta.status = "respondida"
 
     sessao.commit()
     sessao.refresh(resposta)

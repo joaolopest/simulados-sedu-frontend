@@ -6,9 +6,11 @@
 O ator é sempre o usuário do token — o cliente não escolhe quem fez a ação.
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
@@ -47,6 +49,11 @@ def _serializar(a: AcaoAuditoria, usuarios: dict[int, Usuario]) -> dict:
 def listar_auditoria(
     tipo: list[str] | None = Query(None),
     usuario_id: int | None = Query(None),
+    alvo_tipo: str | None = Query(None),
+    alvo_id: str | None = Query(None),
+    busca: str | None = Query(None),
+    desde: datetime | None = Query(None),
+    ate: datetime | None = Query(None),
     pagina: int = Query(1, ge=1),
     por_pagina: int = Query(30, ge=1, le=200),
     sessao: Session = Depends(get_session),
@@ -56,6 +63,25 @@ def listar_auditoria(
         q = q.filter(AcaoAuditoria.tipo.in_(tipo))
     if usuario_id:
         q = q.filter(AcaoAuditoria.usuario_id == usuario_id)
+    if alvo_tipo:
+        q = q.filter(AcaoAuditoria.alvo_tipo == alvo_tipo)
+    if alvo_id:
+        q = q.filter(AcaoAuditoria.alvo_id == alvo_id)
+    if desde:
+        q = q.filter(AcaoAuditoria.ocorrido_em >= desde)
+    if ate:
+        q = q.filter(AcaoAuditoria.ocorrido_em <= ate)
+    if busca:
+        termo = f"%{busca.strip()}%"
+        q = q.filter(
+            or_(
+                AcaoAuditoria.tipo.ilike(termo),
+                AcaoAuditoria.usuario_nome.ilike(termo),
+                AcaoAuditoria.detalhes.ilike(termo),
+                AcaoAuditoria.alvo_tipo.ilike(termo),
+                AcaoAuditoria.alvo_id.ilike(termo),
+            )
+        )
     total = q.count()
     itens = (
         q.order_by(AcaoAuditoria.ocorrido_em.desc())

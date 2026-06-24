@@ -7,6 +7,7 @@ de IA) vêm zerados/vazios e estão sinalizados.
 """
 
 import csv
+import random
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 
@@ -155,6 +156,27 @@ def _inteiro_positivo(valor, padrao: int) -> int:
     except (TypeError, ValueError):
         return padrao
     return numero if numero >= 0 else padrao
+
+
+def _ids_questoes_excluidas(parametros: dict) -> set[int]:
+    ids: set[int] = set()
+    for chave in ("excluirQuestaoIds", "questoesIgnoradas", "questaoIdsIgnoradas"):
+        for valor in _lista_unica(parametros.get(chave)):
+            try:
+                ids.add(int(valor))
+            except (TypeError, ValueError):
+                continue
+    return ids
+
+
+def _embaralhar_questoes(questoes: list[Questao], parametros: dict) -> list[Questao]:
+    itens = list(questoes)
+    seed = parametros.get("seed") or parametros.get("semente")
+    if seed is not None:
+        random.Random(str(seed)).shuffle(itens)
+    else:
+        random.shuffle(itens)
+    return itens
 
 
 def _normalizar_distribuicao(parametros: dict, simulado: Simulado) -> dict[str, int]:
@@ -1369,12 +1391,20 @@ def aluno_simulado(
         for sq in sorted(s.questoes, key=lambda x: x.ordem_questao)
         if sq.questao
     ]
-    respostas = sessao.scalars(
-        select(Resposta).where(
-            Resposta.aluno_id == aluno.id,
-            Resposta.simulado_id == s.id,
-        )
-    ).all()
+    tentativa = prova_avancada_service.tentativa_ativa(
+        sessao, simulado_id=s.id, aluno_id=aluno.id,
+    ) or prova_avancada_service.tentativa_mais_recente(
+        sessao, simulado_id=s.id, aluno_id=aluno.id,
+    )
+    consulta_respostas = select(Resposta).where(
+        Resposta.aluno_id == aluno.id,
+        Resposta.simulado_id == s.id,
+    )
+    if tentativa is not None:
+        consulta_respostas = consulta_respostas.where(Resposta.tentativa_id == tentativa.id)
+    else:
+        consulta_respostas = consulta_respostas.where(Resposta.tentativa_id.is_(None))
+    respostas = sessao.scalars(consulta_respostas).all()
     return {
         "simulado": _serializar_simulado(s),
         "acessibilidade": _acessibilidade_aluno_simulado(sessao, aluno, s),
@@ -2168,7 +2198,10 @@ def _selecionar_questoes_por_parametros(
         elif parametros.get("comImagem") is False:
             q = q.filter((Questao.imagem_url.is_(None)) | (Questao.imagem_url == ""))
     q = aplicar_escopo_questoes(q, usuario)
-    candidatas = q.order_by(Questao.id.desc()).all()
+    ids_excluidos = _ids_questoes_excluidas(parametros)
+    if ids_excluidos:
+        q = q.filter(~Questao.id.in_(ids_excluidos))
+    candidatas = _embaralhar_questoes(q.all(), parametros)
 
     if parametros.get("evitarQuestoesJaUsadas"):
         usadas = set(sessao.scalars(select(SimuladoQuestao.questao_id)).all())
@@ -2204,6 +2237,8 @@ def _selecionar_questoes_por_parametros(
         avisos.append(
             f"Banco retornou {len(selecionadas)} de {quantidade} questoes solicitadas."
         )
+    if ids_excluidos and not selecionadas:
+        avisos.append("Todas as questoes compatíveis com os filtros ja estavam na prova.")
     return selecionadas[:quantidade], avisos
 
 
@@ -2564,6 +2599,73 @@ def gestor_simulado_detalhe(
     return {"simulado": _serializar_simulado(sim), "questoes": _questoes_do_simulado(sim)}
 
 
+@router.post(
+    "/gestor/simulados/{simulado_id}/duplicar",
+    status_code=201,
+    dependencies=[Depends(montadores_prova)],
+)
+def duplicar_simulado(
+    simulado_id: int,
+    request: Request,
+    corpo: dict | None = None,
+    usuario: Usuario = Depends(montadores_prova),
+    sessao: Session = Depends(get_session),
+) -> dict:
+    origem = sessao.get(Simulado, simulado_id)
+    if origem is None:
+        raise HTTPException(status_code=404, detail="Simulado nao encontrado.")
+    _exigir_acesso_simulado(sessao, usuario, origem)
+    _exigir_turma_permitida(sessao, usuario, origem.turma_id)
+
+    parametros = dict(origem.parametros_json or {})
+    titulo_origem = parametros.get("nome") or origem.titulo
+    novo_titulo = (
+        (corpo or {}).get("nome")
+        or (corpo or {}).get("titulo")
+        or f"Copia de {titulo_origem}"
+    )
+    parametros.update(
+        {
+            "nome": novo_titulo,
+            "duplicadaDe": str(origem.id),
+            "duplicadaEm": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    _validar_parametros_quantidade_prova(sessao, parametros)
+
+    novo = Simulado(
+        gestor_id=usuario.id,
+        turma_id=origem.turma_id,
+        titulo=novo_titulo,
+        parametros_json=parametros,
+        status=StatusSimulado.RASCUNHO,
+        criado_em=datetime.now(timezone.utc),
+    )
+    sessao.add(novo)
+    sessao.flush()
+    for sq in sorted(origem.questoes, key=lambda item: item.ordem_questao):
+        sessao.add(
+            SimuladoQuestao(
+                simulado_id=novo.id,
+                questao_id=sq.questao_id,
+                ordem_questao=sq.ordem_questao,
+                alternativas_ordem=sq.alternativas_ordem,
+            )
+        )
+    auditoria_service.registrar(
+        sessao,
+        usuario=usuario,
+        tipo="duplicar_simulado",
+        alvo_tipo="simulado",
+        alvo_id=novo.id,
+        detalhes=f"Duplicou simulado #{origem.id} para {novo.titulo}.",
+        request=request,
+    )
+    sessao.commit()
+    sessao.refresh(novo)
+    return {"simulado": _serializar_simulado(novo), "origemId": str(origem.id)}
+
+
 @router.patch("/gestor/simulados/{simulado_id}", dependencies=[Depends(montadores_prova)])
 def atualizar_simulado(
     simulado_id: int,
@@ -2731,7 +2833,10 @@ def curar_simulado(
     if materias:
         q = q.filter(Materia.nome.in_(materias))
     q = aplicar_escopo_questoes(q, usuario)
-    candidatas = q.all()
+    ids_excluidos = _ids_questoes_excluidas(p)
+    if ids_excluidos:
+        q = q.filter(~Questao.id.in_(ids_excluidos))
+    candidatas = _embaralhar_questoes(q.all(), p)
 
     por_nivel: dict[str, list] = {"facil": [], "medio": [], "dificil": []}
     for qq in candidatas:
@@ -3569,9 +3674,12 @@ def aluno_iniciar(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim)
-    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
-        sessao, simulado=sim, aluno=aluno,
-    )
+    try:
+        tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+            sessao, simulado=sim, aluno=aluno,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     prova_avancada_service.marcar_tentativa_iniciada(tentativa)
     inscricao = _inscricao_simulado_aluno(sessao, aluno.id, sim.id)
     if inscricao is not None and inscricao.status != "finalizado":
@@ -3626,9 +3734,12 @@ def aluno_responder(
 
     alt_raw = corpo.get("alternativaId")
     tempo_gasto = _normalizar_tempo_gasto(corpo.get("tempoGastoSegundos"))
-    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
-        sessao, simulado=sim, aluno=aluno,
-    )
+    try:
+        tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+            sessao, simulado=sim, aluno=aluno,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     prova_avancada_service.marcar_tentativa_iniciada(tentativa)
     resposta = _salvar_resposta_aluno(
         sessao,
@@ -3671,9 +3782,12 @@ def aluno_finalizar(
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulado não encontrado.")
     _exigir_acesso_aluno_simulado_v2(sessao, aluno, sim, exigir_liberado=False)
-    tentativa = prova_avancada_service.obter_ou_criar_tentativa(
-        sessao, simulado=sim, aluno=aluno,
-    )
+    try:
+        tentativa = prova_avancada_service.obter_ou_criar_tentativa(
+            sessao, simulado=sim, aluno=aluno,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     prova_avancada_service.marcar_tentativa_iniciada(tentativa)
     respostas_payload = {
         str(item.get("questaoId")): item
