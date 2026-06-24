@@ -1,19 +1,21 @@
+# Backend FastAPI — imagem de produção/dev.
+# Python 3.12 (estável) em vez do 3.14 local que deu problemas de driver.
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+# Não gera .pyc e não bufferiza stdout (logs aparecem na hora).
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Instala dependências primeiro (cache de camada).
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini .
-COPY scripts ./scripts
+# Copia o código do backend (o .dockerignore exclui .env, .venv, *.db).
+COPY . .
 
 EXPOSE 8000
 
-# Em produção, defina SEDU_JWT_SECRET, SEDU_DATABASE_URL e SEDU_AMBIENTE=producao.
-CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# O entrypoint espera o banco, cria as tabelas, popula (se vazio) e sobe a API.
+CMD ["python", "docker-entrypoint.py"]

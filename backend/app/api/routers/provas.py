@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session, require_gestor
+from app.api.deps import get_session
 from app.services import prova_service
 
-router = APIRouter(prefix="/provas", tags=["provas"])
+from app.api.permissoes import admin_gestor
+
+router = APIRouter(
+    prefix="/provas",
+    tags=["provas"],
+    dependencies=[Depends(admin_gestor)],
+)
 
 
 class GerarProvaRequest(BaseModel):
@@ -23,26 +29,25 @@ class GerarProvaRequest(BaseModel):
     seed: int | None = Field(None, description="Fixa o sorteio para reproduzir o resultado")
 
 
-@router.post(
-    "/gerar",
-    summary="Gerar prova avulsa (sorteio balanceado + embaralhamento)",
-    dependencies=[Depends(require_gestor)],
-)
+@router.post("/gerar", summary="Gerar prova avulsa (sorteio balanceado + embaralhamento)")
 def gerar_prova(
     req: GerarProvaRequest,
     sessao: Session = Depends(get_session),
 ) -> dict:
-    prova = prova_service.gerar_prova(
-        sessao,
-        serie=req.serie,
-        materia=req.materia,
-        materias=req.materias,
-        conteudos=req.conteudos,
-        distribuicao=req.distribuicao,
-        quantidade=req.quantidade,
-        adaptacoes=req.adaptacoes,
-        seed=req.seed,
-    )
+    try:
+        prova = prova_service.gerar_prova(
+            sessao,
+            serie=req.serie,
+            materia=req.materia,
+            materias=req.materias,
+            conteudos=req.conteudos,
+            distribuicao=req.distribuicao,
+            quantidade=req.quantidade,
+            adaptacoes=req.adaptacoes,
+            seed=req.seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return {
         "parametros": {

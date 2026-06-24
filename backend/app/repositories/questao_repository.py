@@ -18,7 +18,6 @@ def filtrar_questoes(
     nivel: Optional[str] = None,
     adaptacoes: Optional[Sequence[str]] = None,
     limite: Optional[int] = None,
-    offset: int = 0,
 ) -> list[Questao]:
     stmt = (
         select(Questao)
@@ -27,7 +26,6 @@ def filtrar_questoes(
         .join(Conteudo, Questao.conteudo_id == Conteudo.id)
         .join(Nivel, Questao.nivel_id == Nivel.id)
         .options(selectinload(Questao.alternativas))
-        .order_by(Questao.id)
     )
 
     if serie:
@@ -47,36 +45,10 @@ def filtrar_questoes(
         alvo = set(adaptacoes)
         questoes = [q for q in questoes if alvo.issubset(set(q.adaptacoes or []))]
 
-    if offset:
-        questoes = questoes[offset:]
     if limite is not None:
         questoes = questoes[:limite]
 
     return questoes
-
-
-def buscar_paginado(
-    sessao: Session,
-    *,
-    serie: Optional[str] = None,
-    materia: Optional[str] = None,
-    conteudo: Optional[str] = None,
-    nivel: Optional[str] = None,
-    adaptacoes: Optional[Sequence[str]] = None,
-    pagina: int = 1,
-    por_pagina: int = 20,
-) -> tuple[list[Questao], int]:
-    todas = filtrar_questoes(
-        sessao,
-        serie=serie,
-        materia=materia,
-        conteudos=[conteudo] if conteudo else None,
-        nivel=nivel,
-        adaptacoes=adaptacoes,
-    )
-    total = len(todas)
-    inicio = (pagina - 1) * por_pagina
-    return todas[inicio : inicio + por_pagina], total
 
 
 def contar_questoes(

@@ -1,100 +1,127 @@
-# SEDUC Simulados — Backend
+# SEDU Simulados - Backend
 
-Backend do **Sistema de Simulados Educacionais com IA** da Secretaria de Educação de Sergipe (SEDUC-SE). Projeto da Residência em Software (UNIT / ADS).
-
-Banco de questões etiquetadas, geração de provas balanceadas, ciclo de simulado (criação → geração → liberação → resposta do aluno → correção) e autenticação JWT por perfil.
+API FastAPI da plataforma de simulados. O banco principal é Supabase/Postgres; o Postgres local via Docker é fallback e backup.
 
 ## Stack
 
-- **Python 3.11+**, **FastAPI**, **SQLAlchemy 2.x**
-- **SQLite** no desenvolvimento → **PostgreSQL** em produção (troca por variável de ambiente)
-- **JWT** (PyJWT) com hash de senha PBKDF2
-- **Alembic** para migrações · **pytest** para testes
+- Python 3.12
+- FastAPI + SQLAlchemy 2.x
+- PostgreSQL
+- Supabase como banco principal
+- Docker Compose para fallback local
 
-## Arquitetura em camadas
+## Banco
 
-```
-HTTP  →  app/api/routers/      (FastAPI: validação, autorização)
-         app/services/         (regra de negócio)
-         app/repositories/     (acesso a dados — SQLAlchemy)
-         app/models.py         (ORM)  ·  app/database.py (engine/sessão)
-```
+A aplicação usa apenas PostgreSQL em runtime, seja Supabase ou Docker local.
 
-Camadas de apoio: `app/config.py` (configuração por ambiente), `app/exceptions.py` (erros de domínio → respostas HTTP padronizadas `{codigo, mensagem}`), `app/enums.py`.
+Ordem de conexão:
 
-## Como rodar (desenvolvimento)
+1. `DATABASE_URL` em `backend/.env` ou `.env` da raiz aponta para Supabase.
+2. Se não houver `.env` ou a conexão falhar, use o script da raiz para subir o Postgres local Docker.
+3. Migrações idempotentes rodam antes do seed.
+4. `scripts/seed_demo.py` completa lacunas sem apagar dados existentes.
+
+## Como rodar
+
+### Automático com fallback
+
+Na raiz do projeto:
 
 ```powershell
-# 1. Ambiente virtual + dependências
+.\scripts\start-app.ps1
+```
+
+Esse script:
+
+- lê `.env` e `backend\.env`;
+- testa o Supabase;
+- mantém o banco Docker parado quando Supabase está disponível;
+- sobe o Postgres local Docker quando o Supabase não responde;
+- inicia backend e frontend.
+
+### Backend manual
+
+```powershell
+cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-
-# 2. Configuração: copie .env.example para .env e gere um segredo
-#    python -c "import secrets; print(secrets.token_urlsafe(48))"
-copy .env.example .env   # ajuste SEDU_JWT_SECRET
-
-# 3. Criar o schema (Alembic é a fonte de verdade)
-alembic upgrade head
-
-# 4. Popular dados
-python scripts\seed_etiquetas.py
-python scripts\seed_demo.py            # usuários admin/gestor/aluno + escola/turma
-python scripts\seed_questoes_demo.py
-python scripts\seed_questoes_extra.py
-
-# 5. Subir a API
-uvicorn app.api.main:app --reload
+pip install -r requirements.txt
+python scripts\init_db.py
+python scripts\seed_demo.py
+python -m uvicorn app.api.main:app --reload
 ```
 
-- **Documentação interativa (Swagger):** http://127.0.0.1:8000/docs
-- **Página de demonstração:** http://127.0.0.1:8000/ (habilitada por `SEDU_DEMO_HABILITADO`)
+### Banco local explícito
 
-## Autenticação
-
-Todos os endpoints (exceto `/auth/login` e `/health`) exigem token JWT no header `Authorization: Bearer <token>`.
-
-```
-POST /auth/login  { "email": "...", "senha": "..." }  → { token, usuario }
-```
-
-Usuários de demonstração (senha `sedu123`): `admin@sedu.se.gov.br`, `gestor@sedu.se.gov.br`, `aluno@sedu.se.gov.br`.
-
-Autorização por perfil: escrita do banco de questões, geração e administração de simulados exigem **gestor/admin**; responder simulado exige **aluno** (identidade derivada do token, nunca do corpo da requisição).
-
-## Configuração (variáveis de ambiente, prefixo `SEDU_`)
-
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `SEDU_AMBIENTE` | `desenvolvimento` | `producao` exige segredo forte |
-| `SEDU_JWT_SECRET` | — | **Obrigatório em produção** (sem fallback inseguro) |
-| `SEDU_JWT_EXPIRA_HORAS` | `8` | Validade do token |
-| `SEDU_DATABASE_URL` | SQLite local | Em produção, URL do PostgreSQL |
-| `SEDU_CORS_ORIGINS` | localhost:3000 | Origens permitidas (vírgula) |
-| `SEDU_DEMO_HABILITADO` | `true` | Habilita a página `/` e o seed de demo |
-
-## Testes
+Na raiz:
 
 ```powershell
-pytest
+docker compose --profile local-db up -d db
 ```
 
-Cobre autenticação, autorização por perfil, ciclo de simulado, correção de nota, máquina de estados e validações de borda (banco de teste isolado em memória).
-
-## Migrações (Alembic)
+Use:
 
 ```powershell
-alembic upgrade head                              # aplica
-alembic revision --autogenerate -m "descricao"    # cria nova a partir dos modelos
+$env:DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/seduc"
 ```
 
-## Deploy (Docker)
+## Backup Supabase -> Docker Local
 
-```bash
-docker build -t seduc-simulados-backend .
-docker run -p 8000:8000 --env-file .env seduc-simulados-backend
+Na raiz:
+
+```powershell
+.\scripts\sync-supabase-to-local.ps1 -Yes
 ```
 
-## Modelo de dados
+O sync copia Supabase para o Postgres local. Ele pode sobrescrever o backup local, mas não apaga o Supabase.
 
-Etiquetas (`series`, `materias`, `conteudos`, `niveis`) classificam cada `questao`. A questão é um bloco inseparável com `alternativas` (uma correta). No simulado, a ordem das alternativas é embaralhada por aplicação em `simulado_questoes.alternativas_ordem`, sem desvincular do enunciado. `usuarios` (perfis), `escolas`, `turmas`, `alunos`, `simulados`, `respostas` sustentam o ciclo completo.
+## Importar questões ENEM
+
+Com o banco configurado em `DATABASE_URL`, rode na raiz do projeto:
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\importar_enem_zip.py --zip C:\Projects\Dev\enem-api-main.zip
+```
+
+Para reprocessar questoes ENEM ja importadas sem duplicar, limpando markdown/HTML
+do enunciado e atualizando etiquetas:
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\importar_enem_zip.py --zip C:\Projects\Dev\enem-api-main.zip --atualizar-existentes
+```
+
+O importador lê o ZIP externo, grava em `questoes`/`alternativas`, cria etiquetas ENEM faltantes, marca cada item com origem `enem:ano:questao:idioma` e registra auditoria em `acoes_auditoria`. A execução é idempotente.
+
+## Acesso de Demonstração
+
+Todos usam senha `sedu123`.
+
+| Email | Perfil |
+| --- | --- |
+| admin@sedu.se.gov.br | admin |
+| gestor@sedu.se.gov.br | gestor |
+| professor@sedu.se.gov.br | professor |
+| roberto.nogueira@sedu.es.gov.br | suporte |
+| aluno@sedu.se.gov.br | aluno |
+| candidato@sedu.se.gov.br | candidato |
+
+## Permissões
+
+- Admin: acesso total, auditoria, revisões e gestão global.
+- Gestor: turmas, provas, questões e suporte dentro da própria escola.
+- Professor: cria provas, cria questões, edita próprias questões e solicita revisão para questões de outros.
+- Suporte: vê alunos com necessidade de suporte da própria escola e registra acompanhamento.
+- Aluno/candidato: acessam apenas os próprios dados e resultados.
+
+O backend é a fonte de autorização. O frontend apenas esconde ou desabilita opções.
+
+## Scripts
+
+```text
+backend/scripts/init_db.py      cria tabelas e aplica migrações idempotentes
+backend/scripts/seed_demo.py    completa dados persistentes mínimos
+backend/scripts/importar_enem_zip.py importa questões do ZIP ENEM para o banco
+backend/scripts/reset_db.py     reseta banco local/dev e roda seed
+scripts/start-app.ps1           inicia app com fallback Supabase -> Docker
+scripts/sync-supabase-to-local.ps1  copia Supabase para backup local
+```
