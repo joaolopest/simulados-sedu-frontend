@@ -8,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
-from app.models import Usuario
+from app.enums import PerfilUsuario, VinculoAluno
+from app.models import Aluno, Usuario
 from app.services import auditoria_service
 from app.services import auth_service
 
@@ -86,10 +87,18 @@ def _serializar_usuario_sessao(usuario: Usuario) -> dict:
     }
     aluno = usuario.aluno
     if aluno is not None:
-        dados["escola_id"] = aluno.turma.escola_id if aluno.turma else None
+        dados["escola_id"] = aluno.turma.escola_id if aluno.turma else usuario.escola_id
         dados["turma_id"] = aluno.turma_id
         dados["adaptacoes"] = aluno.perfil_cognitivo or []
+    elif usuario.escola_id is not None:
+        dados["escola_id"] = usuario.escola_id
     return dados
+
+
+def _garantir_aluno_candidato(sessao: Session, usuario: Usuario) -> None:
+    if usuario.perfil == PerfilUsuario.CANDIDATO and usuario.aluno is None:
+        usuario.aluno = Aluno(vinculo=VinculoAluno.SUPLETIVO)
+        sessao.flush()
 
 
 def obter_usuario_atual(
@@ -128,6 +137,7 @@ def login(
             },
         )
     _limpar_rate_limit(chave_limite)
+    _garantir_aluno_candidato(sessao, usuario)
     usuario.ultimo_acesso = datetime.now(timezone.utc)
     auditoria_service.registrar(
         sessao,

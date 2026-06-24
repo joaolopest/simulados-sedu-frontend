@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.enums import StatusSimulado
+from app.enums import PerfilUsuario, StatusSimulado
 from app.models import (
     Aluno,
     Alternativa,
@@ -159,7 +159,15 @@ def aluno_tem_acesso(sessao: Session, *, aluno_id: int, simulado: Simulado) -> b
     )
     if inscricao is not None:
         return inscricao.status in {"inscrito", "em_andamento", "reaberto"}
-    return aluno.turma_id is not None and aluno.turma_id == simulado.turma_id
+    if aluno.turma_id is not None:
+        return aluno.turma_id == simulado.turma_id
+    usuario = aluno.usuario
+    escola_id = usuario.escola_id if usuario and usuario.perfil == PerfilUsuario.CANDIDATO else None
+    return bool(
+        escola_id is not None
+        and simulado.turma is not None
+        and simulado.turma.escola_id == escola_id
+    )
 
 
 def inscrever_aluno(

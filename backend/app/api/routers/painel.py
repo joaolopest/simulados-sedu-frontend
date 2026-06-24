@@ -1334,6 +1334,19 @@ def aluno_home(
             if _status_simulado_front(s.status) in ("liberado", "em_andamento"):
                 proximo = _serializar_simulado(s)
                 break
+    if proximo is None and usuario.perfil == PerfilUsuario.CANDIDATO and usuario.escola_id:
+        for s in sessao.scalars(
+            select(Simulado)
+            .join(Turma, Simulado.turma_id == Turma.id)
+            .where(Turma.escola_id == usuario.escola_id)
+            .order_by(Simulado.criado_em.desc())
+        ).all():
+            if (
+                _status_simulado_front(s.status) in ("liberado", "em_andamento")
+                and simulado_service.aluno_tem_acesso(sessao, aluno_id=aluno.id, simulado=s)
+            ):
+                proximo = _serializar_simulado(s)
+                break
 
     mostrar_resultado = bool(
         _config_resultados(sessao).get("mostrarResultadoImediato", True)

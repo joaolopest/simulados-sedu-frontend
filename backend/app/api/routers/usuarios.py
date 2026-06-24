@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_session
 from app.api.permissoes import so_admin
-from app.enums import PerfilUsuario
+from app.enums import PerfilUsuario, VinculoAluno
 from app.models import Aluno, Escola, Turma, Usuario
 from app.services import auditoria_service
 from app.services import auth_service
@@ -20,6 +20,12 @@ router = APIRouter(
 )
 
 SENHA_PADRAO = "sedu123"
+
+
+def _garantir_aluno_candidato(sessao: Session, usuario: Usuario) -> None:
+    if usuario.perfil == PerfilUsuario.CANDIDATO and usuario.aluno is None:
+        usuario.aluno = Aluno(vinculo=VinculoAluno.SUPLETIVO)
+        sessao.flush()
 
 
 def _serializar_usuario(u: Usuario) -> dict:
@@ -140,6 +146,7 @@ def criar_usuario(
     )
     sessao.add(usuario)
     sessao.flush()
+    _garantir_aluno_candidato(sessao, usuario)
     auditoria_service.registrar(
         sessao,
         usuario=usuario_logado,
@@ -187,6 +194,7 @@ def atualizar_usuario(
         usuario.escola_id = req.escola_id
     if req.senha:
         usuario.senha_hash = auth_service.gerar_hash_senha(req.senha)
+    _garantir_aluno_candidato(sessao, usuario)
 
     detalhes = f"Editou cadastro de {usuario.nome}"
     if req.ativo is not None:
