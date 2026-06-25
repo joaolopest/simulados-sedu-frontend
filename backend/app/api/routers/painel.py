@@ -2181,6 +2181,9 @@ def _selecionar_questoes_por_parametros(
         .join(Nivel, Questao.nivel_id == Nivel.id)
         .filter(Questao.status == StatusQuestao.PUBLICADA)
     )
+    busca = str(parametros.get("busca") or "").strip()
+    if busca:
+        q = q.filter(Questao.enunciado.ilike(f"%{busca}%"))
     serie_nome = labels.serie_nome(parametros.get("serie"))
     if serie_nome:
         q = q.filter(Serie.nome == serie_nome)

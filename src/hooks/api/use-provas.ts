@@ -15,6 +15,7 @@ import type { TurmaEnriquecida } from "./use-gestor";
 export interface ParametrosGeracaoProva {
   nome: string;
   turmaId: string;
+  busca?: string;
   serie?: SerieEscolar;
   materias?: Materia[];
   conteudos?: string[];

@@ -237,10 +237,9 @@ export function ConstrutorProva() {
       const resposta = await sugerirQuestoes.mutateAsync({
         nome: nomeProva,
         turmaId,
+        busca: busca.trim() || undefined,
         serie:
-          filtroSerie !== "todos"
-            ? (filtroSerie as SerieEscolar)
-            : (turmaSelecionada?.serie as SerieEscolar | undefined),
+          filtroSerie !== "todos" ? (filtroSerie as SerieEscolar) : undefined,
         materias:
           filtroMateria !== "todos" ? [filtroMateria as Materia] : undefined,
         niveis:
