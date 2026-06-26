@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { PerfilUsuario } from "@/types";
 
+const ROTAS_ABERTAS = ["/documentacao"];
 const ROTAS_PUBLICAS = ["/login", "/recuperar-senha", "/primeiro-acesso"];
 const ROTAS_COMPARTILHADAS = ["/perfil", "/notificacoes", "/configuracoes"];
 
@@ -41,6 +42,12 @@ function rotaEhPublica(pathname: string): boolean {
   );
 }
 
+function rotaEhAberta(pathname: string): boolean {
+  return ROTAS_ABERTAS.some(
+    (rota) => pathname === rota || pathname.startsWith(`${rota}/`),
+  );
+}
+
 function rotaEhCompartilhada(pathname: string): boolean {
   return ROTAS_COMPARTILHADAS.some(
     (rota) => pathname === rota || pathname.startsWith(`${rota}/`),
@@ -72,8 +79,8 @@ export function proxy(request: NextRequest): NextResponse {
     ? (perfilCookie as PerfilUsuario)
     : null;
 
-  // Raiz: landing page pública — passa direto. Botão "Entrar" leva pro /login.
-  if (pathname === "/") {
+  // Páginas informativas públicas passam direto, mesmo com usuário logado.
+  if (pathname === "/" || rotaEhAberta(pathname)) {
     return NextResponse.next();
   }
 

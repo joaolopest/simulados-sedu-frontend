@@ -13,6 +13,7 @@ const COLUNAS = [
   {
     titulo: "Institucional",
     links: [
+      { rotulo: "Documentação técnica", href: "/documentacao" },
       { rotulo: "Secretaria de Educação", href: "#" },
       { rotulo: "Política de privacidade", href: "#" },
       { rotulo: "Termos de uso", href: "#" },

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Home, LogOut, Menu, Settings } from "lucide-react";
+import { Bell, FileText, Home, LogOut, Menu, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -94,6 +94,12 @@ export function HeaderProfessor() {
                 <Link href="/" className="gap-2">
                   <Home className="size-3.5" aria-hidden />
                   Página inicial
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/documentacao" className="gap-2">
+                  <FileText className="size-3.5" aria-hidden />
+                  Ajuda e documentação
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

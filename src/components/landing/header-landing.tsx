@@ -13,6 +13,8 @@ const ANCORAS = [
   { id: "acessibilidade", rotulo: "Acessibilidade" },
 ];
 
+const LINKS_PUBLICOS = [{ href: "/documentacao", rotulo: "Documentação" }];
+
 export function HeaderLanding() {
   const [aberto, setAberto] = useState(false);
   const [rolou, setRolou] = useState(false);
@@ -40,7 +42,8 @@ export function HeaderLanding() {
           aria-label="Simulados SEDU"
         >
           <span className="font-sans text-xl font-bold tracking-[-0.03em] text-shade dark:text-marble">
-            Simulados<span className="text-hydrangea">SEDU</span>
+            <span className="max-[359px]:sr-only">Simulados</span>
+            <span className="text-hydrangea">SEDU</span>
           </span>
         </Link>
 
@@ -54,6 +57,15 @@ export function HeaderLanding() {
               {a.rotulo}
             </a>
           ))}
+          {LINKS_PUBLICOS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="rounded-full px-4 py-2 text-sm font-medium text-shade transition-colors hover:bg-shade/8 dark:text-marble dark:hover:bg-marble/10"
+            >
+              {link.rotulo}
+            </Link>
+          ))}
         </nav>
 
         <div className="flex items-center gap-2">
@@ -66,9 +78,10 @@ export function HeaderLanding() {
           </Link>
           <Link
             href="/login"
-            className="inline-flex items-center justify-center rounded-full bg-shade px-5 py-2.5 text-sm font-bold text-marble transition-all hover:bg-shade/90 active:translate-y-px dark:bg-marble dark:text-shade dark:hover:bg-chartreuse"
+            className="inline-flex items-center justify-center rounded-full bg-shade px-4 py-2.5 text-sm font-bold text-marble transition-all hover:bg-shade/90 active:translate-y-px dark:bg-marble dark:text-shade dark:hover:bg-chartreuse sm:px-5"
           >
-            Acessar plataforma
+            <span className="sm:hidden">Acessar</span>
+            <span className="hidden sm:inline">Acessar plataforma</span>
           </Link>
           <button
             type="button"
@@ -94,6 +107,16 @@ export function HeaderLanding() {
               >
                 {a.rotulo}
               </a>
+            ))}
+            {LINKS_PUBLICOS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setAberto(false)}
+                className="block rounded-full px-4 py-3 text-sm font-medium text-shade hover:bg-shade/8 dark:text-marble dark:hover:bg-marble/10"
+              >
+                {link.rotulo}
+              </Link>
             ))}
           </nav>
         </div>
