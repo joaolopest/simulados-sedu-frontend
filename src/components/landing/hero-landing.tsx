@@ -110,6 +110,13 @@ export function HeroLanding() {
     : "Rede SEDU";
   const totalEscolas = metricas?.totalEscolas ?? 0;
   const totalAlunos = metricas?.totalAlunos ?? 0;
+  const ambienteSemDados = Boolean(
+    metricas &&
+      totalEscolas === 0 &&
+      totalAlunos === 0 &&
+      metricas.totalQuestoes === 0 &&
+      metricas.totalSimulados === 0,
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -215,7 +222,9 @@ export function HeroLanding() {
             >
               <School className="size-3.5 text-shade" aria-hidden />
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-shade tabular-nums">
-                {formatarInteiro(totalEscolas)} escolas
+                {ambienteSemDados
+                  ? "ambiente de demonstração"
+                  : `${formatarInteiro(totalEscolas)} escolas`}
               </span>
             </span>
             <span
@@ -227,7 +236,9 @@ export function HeroLanding() {
             >
               <GraduationCap className="size-3.5 text-marble" aria-hidden />
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-marble tabular-nums">
-                {formatarInteiro(totalAlunos)} alunos
+                {ambienteSemDados
+                  ? "sem dados cadastrados"
+                  : `${formatarInteiro(totalAlunos)} alunos`}
               </span>
             </span>
             <span
@@ -239,7 +250,7 @@ export function HeroLanding() {
             >
               <Sparkles className="size-3.5 text-shade" aria-hidden />
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-shade">
-                IA auditável
+                Heurísticas auditáveis
               </span>
             </span>
           </div>
@@ -251,6 +262,7 @@ export function HeroLanding() {
             scrollY={scrollY}
             escolaInicial={escolaPrincipal?.inicial ?? "SE"}
             escolaLabel={escolaLabel}
+            ambienteSemDados={ambienteSemDados}
             metricas={{
               totalQuestoes: metricas?.totalQuestoes ?? 0,
               totalSimulados: metricas?.totalSimulados ?? 0,
@@ -268,11 +280,13 @@ function MockupHero({
   scrollY,
   escolaInicial,
   escolaLabel,
+  ambienteSemDados,
   metricas,
 }: {
   scrollY: number;
   escolaInicial: string;
   escolaLabel: string;
+  ambienteSemDados: boolean;
   metricas: {
     totalQuestoes: number;
     totalSimulados: number;
@@ -487,7 +501,7 @@ function MockupHero({
         </p>
       </CardMockup>
 
-      {/* badge 'ao vivo' canopy — slide-in delay 1000 + pulse */}
+      {/* estado da demonstração — slide-in delay 1000 + pulse */}
       <span
         className="absolute -top-4 right-32 z-10 inline-flex items-center gap-2 rounded-full bg-canopy px-3 py-1.5"
         style={{
@@ -500,7 +514,7 @@ function MockupHero({
           aria-hidden
         />
         <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-shade">
-          ao vivo
+          {ambienteSemDados ? "demonstração" : "dados do banco"}
         </span>
       </span>
     </div>
