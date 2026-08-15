@@ -44,7 +44,7 @@ export function SecaoDiagnosticoReal() {
                 animation: "materialize 0.6s var(--ease-quart) 0ms backwards",
               }}
             >
-              Diagnóstico IA
+              IA heurística local
             </p>
             <h2
               id="diagnostico-titulo"
@@ -55,8 +55,8 @@ export function SecaoDiagnosticoReal() {
                 animation: "materialize 0.6s var(--ease-quart) 150ms backwards",
               }}
             >
-              A IA escreve.{" "}
-              <span className="text-rose">A coordenação assina.</span>
+              A IA heurística local analisa.{" "}
+              <span className="text-rose">A coordenação decide.</span>
             </h2>
           </div>
           <p
@@ -65,9 +65,9 @@ export function SecaoDiagnosticoReal() {
               animation: "materialize 0.6s var(--ease-quart) 300ms backwards",
             }}
           >
-            Cada relatório carrega o modelo usado, o índice de confiança e os
-            pontos onde a curadoria pediu revisão humana. A IA é ferramenta —
-            não autoridade.
+            Este exemplo demonstrativo mostra o resultado do mecanismo
+            heurístico local. Cada relatório registra o método, o índice de
+            confiança e os pontos que exigem revisão humana.
           </p>
         </header>
 
@@ -82,13 +82,13 @@ export function SecaoDiagnosticoReal() {
           >
             <div className="flex flex-wrap items-center gap-3">
               <span className="motion-hero-pulse inline-flex items-center gap-1.5 rounded-full bg-chartreuse px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-shade">
-                <Sparkles className="size-3" aria-hidden /> IA
+                <Sparkles className="size-3" aria-hidden /> IA heurística local
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-marble/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-marble/80">
                 <Bot className="size-3" aria-hidden /> heuristico-local-v1
               </span>
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-marble/50">
-                04/05/2026 · 14:32
+                Exemplo demonstrativo
               </span>
             </div>
 
@@ -176,7 +176,7 @@ export function SecaoDiagnosticoReal() {
               }}
             >
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-shade/70">
-                Confiança da curadoria
+                Confiança da análise
               </p>
               <div className="mt-3 flex items-baseline gap-3">
                 <p
@@ -204,7 +204,7 @@ export function SecaoDiagnosticoReal() {
                 </p>
               </div>
               <p className="mt-2 inline-flex items-center rounded-full bg-shade px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-chartreuse">
-                Alta · liberar direto
+                Alta · revisar e aprovar
               </p>
               <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-shade/15">
                 <div
@@ -238,7 +238,7 @@ export function SecaoDiagnosticoReal() {
                 {[
                   "Modelo registrado",
                   "Confiança em 3 níveis",
-                  "Fallback automático",
+                  "Revisão humana",
                   "Trilha completa",
                 ].map((item) => (
                   <li

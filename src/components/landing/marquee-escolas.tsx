@@ -45,6 +45,13 @@ export function MarqueeEscolas() {
   const { data } = useLandingPublica();
   const metricas = data?.metricas;
   const escolas = data?.escolas ?? [];
+  const ambienteSemDados = Boolean(
+    metricas &&
+      metricas.totalEscolas === 0 &&
+      metricas.totalAlunos === 0 &&
+      metricas.totalQuestoes === 0 &&
+      metricas.totalSimulados === 0,
+  );
   const tiles = escolas.slice(0, 8).map((escola, indice) => ({
     ...escola,
     estilo: ESTILOS_TILE[indice % ESTILOS_TILE.length],
@@ -74,7 +81,7 @@ export function MarqueeEscolas() {
     {
       icone: Award,
       valorFinal: metricas?.anoReferencia ?? new Date().getFullYear(),
-      rotulo: "Em producao",
+      rotulo: "Ano de referência",
       cor: "text-sky",
     },
   ];
@@ -93,7 +100,7 @@ export function MarqueeEscolas() {
               animation: "materialize 0.6s var(--ease-quart) 0ms backwards",
             }}
           >
-            Em uso na rede
+            {ambienteSemDados ? "Ambiente de demonstração" : "Dados cadastrados"}
           </p>
           <h2
             id="trusted-titulo"
@@ -105,10 +112,16 @@ export function MarqueeEscolas() {
               animation: "materialize 0.6s var(--ease-quart) 150ms backwards",
             }}
           >
-            <span className="text-rose">
-              {formatarInteiro(metricas?.totalEscolas ?? 0)}
-            </span>{" "}
-            escolas estaduais.
+            {ambienteSemDados ? (
+              <>Base pronta para <span className="text-rose">receber escolas.</span></>
+            ) : (
+              <>
+                <span className="text-rose">
+                  {formatarInteiro(metricas?.totalEscolas ?? 0)}
+                </span>{" "}
+                escolas cadastradas.
+              </>
+            )}
           </h2>
           <p
             className="mt-5 max-w-xl text-shade/75 dark:text-marble/75 md:text-[17px]"
@@ -116,8 +129,9 @@ export function MarqueeEscolas() {
               animation: "materialize 0.6s var(--ease-quart) 300ms backwards",
             }}
           >
-            Dados carregados do banco da aplicação: escolas, turmas e alunos
-            conectados ao mesmo banco de questões.
+            {ambienteSemDados
+              ? "Este ambiente está sem dados cadastrados. A aplicação permanece pronta para receber escolas, turmas, alunos e questões."
+              : "Dados carregados do banco da aplicação: escolas, turmas e alunos conectados ao mesmo banco de questões."}
           </p>
         </header>
 

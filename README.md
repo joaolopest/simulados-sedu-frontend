@@ -1,5 +1,9 @@
 # Simulados SEDU
 
+[![CI](https://github.com/LuKeTempestt/simulados-sedu/actions/workflows/ci.yml/badge.svg)](https://github.com/LuKeTempestt/simulados-sedu/actions/workflows/ci.yml)
+[![Demonstração](https://img.shields.io/badge/demonstra%C3%A7%C3%A3o-online-0A66C2)](https://simulados-sedu.vercel.app)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green)](LICENSE)
+
 Plataforma web para criação, aplicação, acompanhamento e análise de simulados escolares. O projeto combina frontend em Next.js, backend em FastAPI e banco PostgreSQL para gerenciar usuários, escolas, turmas, questões, provas, respostas, resultados, notificações e auditoria.
 
 Demonstração online: [https://simulados-sedu.vercel.app](https://simulados-sedu.vercel.app)
@@ -8,7 +12,29 @@ Demonstração online: [https://simulados-sedu.vercel.app](https://simulados-sed
 
 Projeto acadêmico desenvolvido na Residência de Software II da Universidade Tiradentes (UNIT), realizada em parceria com a Secretaria de Estado da Educação de Sergipe (SEDUC/SE), responsável pela proposição do desafio. A plataforma foi desenvolvida e entregue como solução do projeto da residência.
 
-A solução centraliza o banco de questões, a montagem de provas, a inscrição de alunos, o salvamento automático de respostas, a correção, os resultados e os indicadores pedagógicos. Ela possui diferentes níveis de acesso para administradores, gestores, professores, profissionais de suporte e alunos, além de recursos de acessibilidade, notificações, auditoria, dashboards e análise automatizada baseada em regras e heurísticas locais, com revisão humana.
+A solução centraliza o banco de questões, a montagem de provas, a inscrição de alunos, o salvamento automático de respostas, a correção, os resultados e os indicadores pedagógicos. Ela possui diferentes níveis de acesso para administradores, gestores, professores, profissionais de suporte e alunos, além de recursos de acessibilidade, notificações, auditoria, dashboards e IA heurística local baseada em regras, com revisão humana.
+
+## Visão Rápida
+
+Este repositório demonstra uma aplicação full stack com:
+
+- frontend responsivo e acessível em Next.js, React e TypeScript;
+- API REST em FastAPI com autenticação JWT e controle de acesso por perfil;
+- persistência em PostgreSQL por meio do SQLAlchemy;
+- BFF no Next.js para centralizar a comunicação entre navegador e backend;
+- dashboards e fluxos distintos para administração, gestão, professores, suporte e alunos;
+- CI, análise de segurança com CodeQL e script próprio de QA final;
+- comunicação explícita quando o ambiente público está sem dados cadastrados;
+- IA heurística local baseada em regras, sem alegar integração com modelos externos.
+
+## Como Avaliar o Projeto
+
+1. Abra a [demonstração online](https://simulados-sedu.vercel.app) para conhecer a interface e os fluxos disponíveis.
+2. Consulte a [documentação técnica](docs/documentacao-tecnica-aplicacao.md) para entender arquitetura, segurança e operação.
+3. Veja o [fluxo completo da API](docs/postman-fluxo-backend.md) e o [mapeamento de dados](docs/mapeamento-dados-backend.md).
+4. Confira as execuções de [CI e CodeQL](https://github.com/LuKeTempestt/simulados-sedu/actions).
+
+> A página pública lê as métricas do banco configurado. Quando a base está vazia, a interface identifica o ambiente como demonstração e mantém os valores reais, sem inventar números.
 
 ## Estado Atual
 

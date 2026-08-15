@@ -51,7 +51,7 @@ const PASSOS: Passo[] = [
   },
   {
     numero: "03",
-    titulo: "Análise automatizada com índice de confiança",
+    titulo: "IA heurística local com índice de confiança",
     descricao:
       "O mecanismo local usa regras e heurísticas para montar e validar o equilíbrio. Acima de 80% libera direto. Abaixo de 60%, exige revisão humana.",
     icone: Sparkles,
@@ -60,7 +60,7 @@ const PASSOS: Passo[] = [
     pillBg: "bg-chartreuse",
     pillTexto: "text-shade",
     iconeAcento: "text-sky",
-    destaque: "Heurísticas locais · auditável",
+    destaque: "IA heurística local · auditável",
     destaqueCor: "bg-sky text-shade",
   },
   {

@@ -220,6 +220,36 @@ function validarPostman() {
   }
 }
 
+function verificarComunicacaoLanding() {
+  titulo("Comunicação pública da landing page");
+  const arquivos = [
+    "src/components/landing/hero-landing.tsx",
+    "src/components/landing/marquee-escolas.tsx",
+    "src/components/landing/secao-diagnostico-real.tsx",
+  ];
+  const conteudo = arquivos
+    .map((arquivo) => readFileSync(resolve(raiz, arquivo), "utf8"))
+    .join("\n");
+  const proibidos = ["A IA escreve.", "IA auditável", "Em producao", "ao vivo"];
+  const encontrados = proibidos.filter((texto) => conteudo.includes(texto));
+  if (encontrados.length > 0) {
+    falhar(`Landing page ainda contém alegações imprecisas: ${encontrados.join(", ")}`);
+    return;
+  }
+  const obrigatorios = [
+    "Ambiente de demonstração",
+    "IA heurística local",
+    "A IA heurística local analisa.",
+    "Exemplo demonstrativo",
+  ];
+  const ausentes = obrigatorios.filter((texto) => !conteudo.includes(texto));
+  if (ausentes.length > 0) {
+    falhar(`Landing page sem os avisos esperados: ${ausentes.join(", ")}`);
+    return;
+  }
+  console.log("OK: landing page distingue dados reais, demonstração e IA heurística local.");
+}
+
 async function verificarBackend() {
   if (skipBackend) {
     titulo("Backend/API");
@@ -314,6 +344,7 @@ async function verificarBff() {
 async function main() {
   verificarSemMocksRuntime();
   validarPostman();
+  verificarComunicacaoLanding();
   await verificarBackend();
   rodarPnpm("TypeScript", ["exec", "tsc", "--noEmit"]);
   rodarPnpm("ESLint", ["run", "lint"]);
