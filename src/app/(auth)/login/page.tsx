@@ -170,7 +170,7 @@ function ConteudoLogin() {
         <span className="texto-rotulo-lg">Acesso institucional</span>
         <h1 className="titulo-display text-foreground">Entrar na plataforma</h1>
         <p className="text-sm text-muted-foreground">
-          Use seu email <span className="text-foreground">@sedu.es.gov.br</span>{" "}
+          Use seu email <span className="text-foreground">@sedu.se.gov.br</span>{" "}
           ou o login do aluno fornecido pela escola.
         </p>
       </header>
@@ -192,7 +192,7 @@ function ConteudoLogin() {
                     {...field}
                     type="email"
                     autoComplete="email"
-                    placeholder="seu.nome@sedu.es.gov.br"
+                    placeholder="seu.nome@sedu.se.gov.br"
                     inputMode="email"
                     autoFocus
                   />

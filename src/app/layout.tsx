@@ -27,9 +27,9 @@ const fonteMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Simulados SEDU",
   description:
-    "Plataforma de simulados educacionais com IA da Secretaria Estadual de Educação",
+    "Plataforma de simulados educacionais desenvolvida na Residência de Software II da UNIT, em parceria com a SEDUC Sergipe",
   applicationName: "Simulados SEDU",
-  authors: [{ name: "Secretaria Estadual de Educação" }],
+  authors: [{ name: "Residência de Software II · Universidade Tiradentes" }],
 };
 
 export default function LayoutRaiz({

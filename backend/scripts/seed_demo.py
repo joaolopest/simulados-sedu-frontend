@@ -97,7 +97,7 @@ ESCOLAS_REDE = [
         "endereco": "Av. Cesar Hilal, 1240 - Praia do Suá",
         "cep": "29052-230",
         "telefone": "(27) 3137-2210",
-        "email_contato": "mariaortiz@sedu.es.gov.br",
+        "email_contato": "mariaortiz@sedu.se.gov.br",
         "total_professores": 64,
     },
     {
@@ -108,7 +108,7 @@ ESCOLAS_REDE = [
         "endereco": "Rua Bernardino Monteiro, 425 - Centro",
         "cep": "29300-100",
         "telefone": "(28) 3522-1145",
-        "email_contato": "cgomes@sedu.es.gov.br",
+        "email_contato": "cgomes@sedu.se.gov.br",
         "total_professores": 41,
     },
     {
@@ -119,7 +119,7 @@ ESCOLAS_REDE = [
         "endereco": "Rodovia ES-440, km 18 - Distrito Bebedouro",
         "cep": "29920-000",
         "telefone": "(27) 3372-4408",
-        "email_contato": "saojoserural@sedu.es.gov.br",
+        "email_contato": "saojoserural@sedu.se.gov.br",
         "total_professores": 12,
     },
     {
@@ -130,7 +130,7 @@ ESCOLAS_REDE = [
         "endereco": "Av. Luciano das Neves, 2890 - Praia da Costa",
         "cep": "29101-555",
         "telefone": "(27) 3149-7822",
-        "email_contato": "leliaalmeida@sedu.es.gov.br",
+        "email_contato": "leliaalmeida@sedu.se.gov.br",
         "total_professores": 36,
     },
     {
@@ -141,7 +141,7 @@ ESCOLAS_REDE = [
         "endereco": "Rua das Palmeiras, 78 - Laranjeiras",
         "cep": "29165-680",
         "telefone": "(27) 3251-6034",
-        "email_contato": "silasneves@sedu.es.gov.br",
+        "email_contato": "silasneves@sedu.se.gov.br",
         "total_professores": 28,
     },
 ]
@@ -193,22 +193,22 @@ TURMAS_POR_BLOCO = [
 ]
 
 USUARIOS_REDE = [
-    ("Renata Albuquerque Cardoso", "renata.cardoso@sedu.es.gov.br", PerfilUsuario.ADMIN, None, "usu_001"),
-    ("Marcelo Antônio Ribeiro", "marcelo.ribeiro@sedu.es.gov.br", PerfilUsuario.ADMIN, None, "usu_002"),
-    ("Patrícia Mendonça Vieira", "patricia.vieira@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_001", "usu_003"),
-    ("Carlos Eduardo Tavares", "carlos.tavares@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_001", "usu_004"),
-    ("Fernanda Lúcia Bittencourt", "fernanda.bittencourt@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_001", "usu_005"),
-    ("Ricardo Silveira Pacheco", "ricardo.pacheco@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_002", "usu_006"),
-    ("Joana Carla Figueiredo", "joana.figueiredo@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_002", "usu_007"),
-    ("Antônio Carlos Brandão", "antonio.brandao@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_003", "usu_008"),
-    ("Lúcia Helena Marques", "lucia.marques@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_004", "usu_009"),
-    ("Diego Henrique Pacheco", "diego.pacheco@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_004", "usu_010"),
-    ("Sandra Regina Alvarenga", "sandra.alvarenga@sedu.es.gov.br", PerfilUsuario.GESTOR, "esc_005", "usu_011"),
-    ("Roberto Carlos Nogueira", "roberto.nogueira@sedu.es.gov.br", PerfilUsuario.SUPORTE, "esc_001", "usu_211"),
-    ("Mariana Pires de Oliveira", "mariana.pires@sedu.es.gov.br", PerfilUsuario.SUPORTE, "esc_002", "usu_212"),
-    ("Eduardo Vinícius Lacerda", "eduardo.lacerda@sedu.es.gov.br", PerfilUsuario.SUPORTE, "esc_003", "usu_213"),
-    ("Tatiana Souza Mascarenhas", "tatiana.mascarenhas@sedu.es.gov.br", PerfilUsuario.SUPORTE, "esc_004", "usu_214"),
-    ("Felipe Augusto Damasceno", "felipe.damasceno@sedu.es.gov.br", PerfilUsuario.SUPORTE, "esc_005", "usu_215"),
+    ("Renata Albuquerque Cardoso", "renata.cardoso@sedu.se.gov.br", PerfilUsuario.ADMIN, None, "usu_001"),
+    ("Marcelo Antônio Ribeiro", "marcelo.ribeiro@sedu.se.gov.br", PerfilUsuario.ADMIN, None, "usu_002"),
+    ("Patrícia Mendonça Vieira", "patricia.vieira@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_001", "usu_003"),
+    ("Carlos Eduardo Tavares", "carlos.tavares@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_001", "usu_004"),
+    ("Fernanda Lúcia Bittencourt", "fernanda.bittencourt@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_001", "usu_005"),
+    ("Ricardo Silveira Pacheco", "ricardo.pacheco@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_002", "usu_006"),
+    ("Joana Carla Figueiredo", "joana.figueiredo@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_002", "usu_007"),
+    ("Antônio Carlos Brandão", "antonio.brandao@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_003", "usu_008"),
+    ("Lúcia Helena Marques", "lucia.marques@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_004", "usu_009"),
+    ("Diego Henrique Pacheco", "diego.pacheco@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_004", "usu_010"),
+    ("Sandra Regina Alvarenga", "sandra.alvarenga@sedu.se.gov.br", PerfilUsuario.GESTOR, "esc_005", "usu_011"),
+    ("Roberto Carlos Nogueira", "roberto.nogueira@sedu.se.gov.br", PerfilUsuario.SUPORTE, "esc_001", "usu_211"),
+    ("Mariana Pires de Oliveira", "mariana.pires@sedu.se.gov.br", PerfilUsuario.SUPORTE, "esc_002", "usu_212"),
+    ("Eduardo Vinícius Lacerda", "eduardo.lacerda@sedu.se.gov.br", PerfilUsuario.SUPORTE, "esc_003", "usu_213"),
+    ("Tatiana Souza Mascarenhas", "tatiana.mascarenhas@sedu.se.gov.br", PerfilUsuario.SUPORTE, "esc_004", "usu_214"),
+    ("Felipe Augusto Damasceno", "felipe.damasceno@sedu.se.gov.br", PerfilUsuario.SUPORTE, "esc_005", "usu_215"),
 ]
 
 NOMES_FEMININOS = [
@@ -602,7 +602,7 @@ def _nome_aluno(indice: int) -> str:
 
 def _email_de_aluno(nome_completo: str, numero: int) -> str:
     partes = _sem_acentos(nome_completo).lower().split()
-    return f"{partes[0]}.{partes[-1]}{numero}@aluno.sedu.es.gov.br"
+    return f"{partes[0]}.{partes[-1]}{numero}@aluno.sedu.se.gov.br"
 
 
 def _ultimo_acesso_variado(indice: int) -> datetime:

@@ -51,16 +51,16 @@ const PASSOS: Passo[] = [
   },
   {
     numero: "03",
-    titulo: "IA monta com índice de confiança",
+    titulo: "Análise automatizada com índice de confiança",
     descricao:
-      "Claude Opus monta, valida o equilíbrio e devolve confiança auditável. Acima de 80% libera direto. Abaixo de 60%, revisão obrigatória.",
+      "O mecanismo local usa regras e heurísticas para montar e validar o equilíbrio. Acima de 80% libera direto. Abaixo de 60%, exige revisão humana.",
     icone: Sparkles,
     bg: "bg-iris",
     texto: "text-marble",
     pillBg: "bg-chartreuse",
     pillTexto: "text-shade",
     iconeAcento: "text-sky",
-    destaque: "8 a 12s · auditável",
+    destaque: "Heurísticas locais · auditável",
     destaqueCor: "bg-sky text-shade",
   },
   {
