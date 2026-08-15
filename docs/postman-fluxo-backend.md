@@ -337,7 +337,7 @@ Body:
 ```json
 {
   "nome": "Aluno QA Fluxo {{run}}",
-  "email": "qa.fluxo.{{run}}@aluno.sedu.es.gov.br",
+  "email": "qa.fluxo.{{run}}@aluno.sedu.se.gov.br",
   "senha": "sedu123",
   "cpf": "9{{run}}",
   "data_nascimento": "2011-05-10",

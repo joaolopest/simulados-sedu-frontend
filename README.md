@@ -2,7 +2,13 @@
 
 Plataforma web para criação, aplicação, acompanhamento e análise de simulados escolares. O projeto combina frontend em Next.js, backend em FastAPI e banco PostgreSQL para gerenciar usuários, escolas, turmas, questões, provas, respostas, resultados, notificações e auditoria.
 
-Produção: [https://simulados-sedu.vercel.app](https://simulados-sedu.vercel.app)
+Demonstração online: [https://simulados-sedu.vercel.app](https://simulados-sedu.vercel.app)
+
+## Contexto acadêmico
+
+Projeto acadêmico desenvolvido na Residência de Software II da Universidade Tiradentes (UNIT), realizada em parceria com a Secretaria de Estado da Educação de Sergipe (SEDUC/SE), responsável pela proposição do desafio. A plataforma foi desenvolvida e entregue como solução do projeto da residência.
+
+A solução centraliza o banco de questões, a montagem de provas, a inscrição de alunos, o salvamento automático de respostas, a correção, os resultados e os indicadores pedagógicos. Ela possui diferentes níveis de acesso para administradores, gestores, professores, profissionais de suporte e alunos, além de recursos de acessibilidade, notificações, auditoria, dashboards e análise automatizada baseada em regras e heurísticas locais, com revisão humana.
 
 ## Estado Atual
 
@@ -125,7 +131,7 @@ backend/app/api/routers/ia.py
 
 ### Observação Sobre Textos de Apresentação
 
-Alguns textos de interface ou landing page podem citar Claude ou modelo generativo como parte da proposta de produto. Esses textos não representam uma integração ativa no runtime atual.
+A interface e esta documentação apresentam o mecanismo real em uso: regras e heurísticas locais, sem integração ativa com modelo generativo externo.
 
 Para documentação técnica, considerar como verdade:
 

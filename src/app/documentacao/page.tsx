@@ -51,6 +51,7 @@ const indice = [
 const identificacao = [
   ["Nome", "Simulados SEDU"],
   ["Tipo", "Aplicação web para gestão e aplicação de simulados escolares"],
+  ["Contexto", "Residência de Software II da UNIT, em parceria com a SEDUC/SE"],
   ["Público principal", "Secretaria, gestores, professores, suporte, alunos e candidatos"],
   ["Frontend", "Next.js 16, React 19 e TypeScript"],
   ["Backend", "FastAPI, SQLAlchemy 2 e PyJWT"],

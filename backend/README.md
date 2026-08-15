@@ -101,7 +101,7 @@ Todos usam senha `sedu123`.
 | admin@sedu.se.gov.br | admin |
 | gestor@sedu.se.gov.br | gestor |
 | professor@sedu.se.gov.br | professor |
-| roberto.nogueira@sedu.es.gov.br | suporte |
+| roberto.nogueira@sedu.se.gov.br | suporte |
 | aluno@sedu.se.gov.br | aluno |
 | candidato@sedu.se.gov.br | candidato |
 

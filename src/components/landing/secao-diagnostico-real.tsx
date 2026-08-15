@@ -85,7 +85,7 @@ export function SecaoDiagnosticoReal() {
                 <Sparkles className="size-3" aria-hidden /> IA
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-marble/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-marble/80">
-                <Bot className="size-3" aria-hidden /> claude-opus-4-7
+                <Bot className="size-3" aria-hidden /> heuristico-local-v1
               </span>
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-marble/50">
                 04/05/2026 · 14:32

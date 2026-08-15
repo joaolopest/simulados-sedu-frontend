@@ -59,8 +59,9 @@ export function FooterLanding() {
         <div className="grid gap-12 border-t border-marble/15 pt-12 md:grid-cols-12 md:gap-16">
           <div className="md:col-span-5">
             <p className="max-w-sm text-base leading-[1.55] text-marble/80">
-              Plataforma estadual de avaliação educacional do Espírito Santo.
-              Da Secretaria à sala de aula em um único fluxo.
+              Projeto acadêmico da Residência de Software II da UNIT,
+              desenvolvido em parceria com a SEDUC Sergipe a partir do desafio
+              proposto pela Secretaria.
             </p>
           </div>
 
@@ -94,7 +95,7 @@ export function FooterLanding() {
 
         <div className="mt-16 flex flex-col gap-3 border-t border-marble/15 pt-8 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-marble/50">
-            Governo do Espírito Santo · Secretaria de Educação · {ano}
+            UNIT · Residência de Software II · SEDUC Sergipe · {ano}
           </p>
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-marble/50">
             v0.1.0 · WCAG AA

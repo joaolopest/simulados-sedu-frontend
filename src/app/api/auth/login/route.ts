@@ -22,7 +22,7 @@ const EMAIL_SEMENTE: Partial<Record<PerfilUsuario, string>> = {
   admin: "admin@sedu.se.gov.br",
   gestor: "gestor@sedu.se.gov.br",
   professor: "professor@sedu.se.gov.br",
-  suporte: "roberto.nogueira@sedu.es.gov.br",
+  suporte: "roberto.nogueira@sedu.se.gov.br",
   aluno: "aluno@sedu.se.gov.br",
   candidato: "candidato@sedu.se.gov.br",
 };

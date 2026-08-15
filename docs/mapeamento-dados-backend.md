@@ -49,8 +49,8 @@ Resultado atual: sem dependencia runtime de MSW/mock/fila local de respostas. O 
 ## Dados migrados
 
 - Banco local Docker usado pela aplicacao: dados persistentes em `usuarios`, `alunos`, `escolas`, `turmas`, `questoes`, `alternativas`, `simulados`, `simulado_questoes`, `simulado_inscricoes`, `respostas`, `notificacoes` e `acoes_auditoria`.
-- Usuario rapido de suporte: `roberto.nogueira@sedu.es.gov.br`.
-- Usuarios `roberto.nogueira@sedu.es.gov.br` e `suporte@sedu.se.gov.br`: vinculados a `EEEFM Maria Ortiz`, por isso enxergam 29 alunos de suporte da escola.
+- Usuario rapido de suporte: `roberto.nogueira@sedu.se.gov.br`.
+- Usuarios `roberto.nogueira@sedu.se.gov.br` e `suporte@sedu.se.gov.br`: vinculados a `EEEFM Maria Ortiz`, por isso enxergam 29 alunos de suporte da escola.
 - Admin acessando `/suporte/dashboard`: enxerga os 141 alunos com suporte/adaptacao da rede inteira.
 - Questoes: registros persistidos com serie, materia, conteudo, nivel, escola, criador e alternativas no banco.
 - ENEM: `backend/scripts/importar_enem_zip.py` importou 2.757 questoes unicas do `enem-api-main.zip` para `questoes`/`alternativas`, com etiquetas de serie `3ª série EM`, nivel `Médio`, materias/areas ENEM e marcadores `enem:ano:questao:idioma` em `competencias`. O modo `--atualizar-existentes` reprocessa itens ja importados sem duplicar, removendo markdown/HTML do enunciado e mantendo idiomas estrangeiros como conteudos dentro de `Linguagens`.
