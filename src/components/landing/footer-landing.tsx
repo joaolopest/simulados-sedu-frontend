@@ -6,7 +6,7 @@ const COLUNAS = [
     links: [
       { rotulo: "Como funciona", href: "#como-funciona" },
       { rotulo: "Quem usa", href: "#depoimentos" },
-      { rotulo: "Análise automatizada", href: "#diagnostico" },
+      { rotulo: "IA heurística local", href: "#diagnostico" },
       { rotulo: "Acessibilidade", href: "#acessibilidade" },
     ],
   },

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const ANCORAS = [
   { id: "como-funciona", rotulo: "Como funciona" },
   { id: "depoimentos", rotulo: "Quem usa" },
-  { id: "diagnostico", rotulo: "Análise automatizada" },
+  { id: "diagnostico", rotulo: "IA heurística local" },
   { id: "acessibilidade", rotulo: "Acessibilidade" },
 ];
 

@@ -238,8 +238,8 @@ function verificarComunicacaoLanding() {
   }
   const obrigatorios = [
     "Ambiente de demonstração",
-    "Heurísticas auditáveis",
-    "Regras locais analisam.",
+    "IA heurística local",
+    "A IA heurística local analisa.",
     "Exemplo demonstrativo",
   ];
   const ausentes = obrigatorios.filter((texto) => !conteudo.includes(texto));
@@ -247,7 +247,7 @@ function verificarComunicacaoLanding() {
     falhar(`Landing page sem os avisos esperados: ${ausentes.join(", ")}`);
     return;
   }
-  console.log("OK: landing page distingue dados reais, demonstração e heurísticas locais.");
+  console.log("OK: landing page distingue dados reais, demonstração e IA heurística local.");
 }
 
 async function verificarBackend() {

@@ -250,7 +250,7 @@ export function HeroLanding() {
             >
               <Sparkles className="size-3.5 text-shade" aria-hidden />
               <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-shade">
-                Heurísticas auditáveis
+                IA heurística local
               </span>
             </span>
           </div>

@@ -12,7 +12,7 @@ Demonstração online: [https://simulados-sedu.vercel.app](https://simulados-sed
 
 Projeto acadêmico desenvolvido na Residência de Software II da Universidade Tiradentes (UNIT), realizada em parceria com a Secretaria de Estado da Educação de Sergipe (SEDUC/SE), responsável pela proposição do desafio. A plataforma foi desenvolvida e entregue como solução do projeto da residência.
 
-A solução centraliza o banco de questões, a montagem de provas, a inscrição de alunos, o salvamento automático de respostas, a correção, os resultados e os indicadores pedagógicos. Ela possui diferentes níveis de acesso para administradores, gestores, professores, profissionais de suporte e alunos, além de recursos de acessibilidade, notificações, auditoria, dashboards e análise automatizada baseada em regras e heurísticas locais, com revisão humana.
+A solução centraliza o banco de questões, a montagem de provas, a inscrição de alunos, o salvamento automático de respostas, a correção, os resultados e os indicadores pedagógicos. Ela possui diferentes níveis de acesso para administradores, gestores, professores, profissionais de suporte e alunos, além de recursos de acessibilidade, notificações, auditoria, dashboards e IA heurística local baseada em regras, com revisão humana.
 
 ## Visão Rápida
 
@@ -25,7 +25,7 @@ Este repositório demonstra uma aplicação full stack com:
 - dashboards e fluxos distintos para administração, gestão, professores, suporte e alunos;
 - CI, análise de segurança com CodeQL e script próprio de QA final;
 - comunicação explícita quando o ambiente público está sem dados cadastrados;
-- análise automatizada por regras e heurísticas locais, sem alegar integração com modelos externos.
+- IA heurística local baseada em regras, sem alegar integração com modelos externos.
 
 ## Como Avaliar o Projeto
 

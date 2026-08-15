@@ -44,7 +44,7 @@ export function SecaoDiagnosticoReal() {
                 animation: "materialize 0.6s var(--ease-quart) 0ms backwards",
               }}
             >
-              Análise automatizada
+              IA heurística local
             </p>
             <h2
               id="diagnostico-titulo"
@@ -55,7 +55,7 @@ export function SecaoDiagnosticoReal() {
                 animation: "materialize 0.6s var(--ease-quart) 150ms backwards",
               }}
             >
-              Regras locais analisam.{" "}
+              A IA heurística local analisa.{" "}
               <span className="text-rose">A coordenação decide.</span>
             </h2>
           </div>
@@ -82,7 +82,7 @@ export function SecaoDiagnosticoReal() {
           >
             <div className="flex flex-wrap items-center gap-3">
               <span className="motion-hero-pulse inline-flex items-center gap-1.5 rounded-full bg-chartreuse px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-shade">
-                <Sparkles className="size-3" aria-hidden /> Heurística
+                <Sparkles className="size-3" aria-hidden /> IA heurística local
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-marble/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-marble/80">
                 <Bot className="size-3" aria-hidden /> heuristico-local-v1
