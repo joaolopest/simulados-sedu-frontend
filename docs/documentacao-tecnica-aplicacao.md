@@ -23,6 +23,13 @@ consiga responder:
 Este documento não substitui o Swagger/OpenAPI. O Swagger descreve endpoints da
 API. Este documento descreve a aplicação como produto de software.
 
+### 1.1 Contexto acadêmico
+
+O projeto foi desenvolvido na Residência de Software II da Universidade
+Tiradentes (UNIT), realizada em parceria com a Secretaria de Estado da Educação
+de Sergipe (SEDUC/SE), responsável pela proposição do desafio. A plataforma foi
+desenvolvida e entregue como solução do projeto da residência.
+
 ## 2. Metodologia de organização
 
 A estrutura foi inspirada em práticas comuns de documentação de arquitetura e
@@ -48,6 +55,7 @@ Na prática, o documento combina:
 | --- | --- |
 | Nome | Simulados SEDU |
 | Tipo | Aplicação web para gestão e aplicação de simulados escolares |
+| Contexto | Residência de Software II da UNIT, em parceria com a SEDUC/SE |
 | Público principal | Secretaria, gestores, professores, suporte, alunos e candidatos |
 | Frontend | Next.js 16, React 19 e TypeScript |
 | Backend | FastAPI, SQLAlchemy 2 e PyJWT |

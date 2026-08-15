@@ -137,7 +137,7 @@ export function HeroLanding() {
           >
             <span className="size-1.5 rounded-full bg-chartreuse" aria-hidden />
             <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-marble dark:text-shade">
-              Secretaria do Espírito Santo
+              Residência de Software II · UNIT + SEDUC/SE
             </span>
           </span>
 
@@ -176,9 +176,10 @@ export function HeroLanding() {
               animation: "materialize 0.6s var(--ease-quart) 600ms backwards",
             }}
           >
-            Plataforma estadual de simulados com IA auditável. Da Secretaria à
-            sala de aula em um único fluxo — do último aluno entregando até o
-            diagnóstico chegar pro coordenador, no mesmo dia.
+            Plataforma full stack desenvolvida na Residência de Software II da
+            UNIT, realizada em parceria com a SEDUC Sergipe. A solução responde
+            ao desafio de criar, aplicar e analisar simulados educacionais em
+            um único fluxo.
           </p>
 
           {/* CTAs — materialize delay 800 */}

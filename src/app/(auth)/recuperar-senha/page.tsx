@@ -126,7 +126,7 @@ export default function PaginaRecuperarSenha() {
                     {...field}
                     type="email"
                     autoComplete="email"
-                    placeholder="seu.nome@sedu.es.gov.br"
+                    placeholder="seu.nome@sedu.se.gov.br"
                     inputMode="email"
                     autoFocus
                   />

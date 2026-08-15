@@ -794,7 +794,7 @@ function FormularioNovaEscola({ aoSucesso }: { aoSucesso: () => void }) {
             type="email"
             value={emailContato}
             onChange={(e) => setEmailContato(e.target.value)}
-            placeholder="escola@sedu.es.gov.br"
+            placeholder="escola@sedu.se.gov.br"
             className="mt-1.5"
           />
         </div>

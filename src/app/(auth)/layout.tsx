@@ -12,7 +12,7 @@ export default function LayoutAuth({ children }: { children: ReactNode }) {
         <div className="relative flex items-center gap-3">
           <BrasaoSedu className="size-9" />
           <span className="font-mono text-xs uppercase tracking-[0.18em] text-primary-foreground/80">
-            SEDU · Espírito Santo
+            SEDUC · Sergipe
           </span>
         </div>
 
@@ -21,14 +21,14 @@ export default function LayoutAuth({ children }: { children: ReactNode }) {
             Avaliação educacional inteligente, desenhada para a sala de aula.
           </h1>
           <p className="mt-6 text-sm leading-relaxed text-primary-foreground/75">
-            Plataforma oficial de simulados da Secretaria Estadual de Educação
-            do Espírito Santo. Curadoria assistida por IA, diagnóstico por
-            competência, acessibilidade pedagógica.
+            Solução desenvolvida na Residência de Software II da UNIT, em
+            parceria com a SEDUC Sergipe. Análise automatizada, diagnóstico por
+            competência e acessibilidade pedagógica.
           </p>
         </div>
 
         <div className="relative flex items-end justify-between text-xs text-primary-foreground/60">
-          <span className="font-mono">simulados.sedu.es.gov.br</span>
+          <span className="font-mono">simulados-sedu.vercel.app</span>
           <span className="font-mono tabular-nums">v1.0</span>
         </div>
       </aside>
@@ -39,7 +39,7 @@ export default function LayoutAuth({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3 lg:hidden">
             <BrasaoSedu className="size-8 text-primary" />
             <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              SEDU · Espírito Santo
+              SEDUC · Sergipe
             </span>
           </div>
           {children}
