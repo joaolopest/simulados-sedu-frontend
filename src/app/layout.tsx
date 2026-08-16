@@ -25,11 +25,35 @@ const fonteMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://simulados-sedu.vercel.app"),
   title: "Simulados SEDU",
   description:
     "Plataforma de simulados educacionais desenvolvida na Residência de Software II da UNIT, em parceria com a SEDUC Sergipe",
   applicationName: "Simulados SEDU",
   authors: [{ name: "Residência de Software II · Universidade Tiradentes" }],
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: "/",
+    title: "Simulados SEDU — Avaliação educacional",
+    description:
+      "Plataforma full stack para criar, aplicar e analisar simulados educacionais, desenvolvida na Residência de Software II da UNIT.",
+    images: [
+      {
+        url: "/images/simulados-sedu-linkedin.png",
+        width: 1734,
+        height: 907,
+        alt: "Simulados SEDU — plataforma de avaliação educacional com Next.js e FastAPI",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Simulados SEDU — Avaliação educacional",
+    description:
+      "Plataforma full stack para criar, aplicar e analisar simulados educacionais.",
+    images: ["/images/simulados-sedu-linkedin.png"],
+  },
 };
 
 export default function LayoutRaiz({
